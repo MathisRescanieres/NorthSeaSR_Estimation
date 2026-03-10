@@ -1,0 +1,2646 @@
+---
+title: "Untitled"
+author: "Héloïse CALZAN"
+date: "08/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("E:\\github\\travail_github\\Stage_M2_Calzan")
+
+library(readr)
+tableau_donnees_3 <- read.csv("tableau_donnees_filtrees_3.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+tableau_sp_c_3 <- read.csv("tableau_sp_cohorte_3.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+```
+
+explorations des tableaux
+```{r, include=FALSE}
+#tableau_donnees_3
+summary(tableau_donnees_3)
+sapply(tableau_donnees_3,FUN=function(el) sum(is.na(el)))
+sapply(tableau_donnees_3, FUN = class)
+
+tableau_donnees_3$Area <- as.factor(tableau_donnees_3$Area)
+tableau_donnees_3$Species <- as.factor(tableau_donnees_3$Species)
+tableau_donnees_3$Sex <- as.factor(tableau_donnees_3$Sex)
+tableau_donnees_3$Maturity <- as.factor(tableau_donnees_3$Maturity)
+tableau_donnees_3$AphiaID <- as.factor(tableau_donnees_3$AphiaID)
+
+sapply(tableau_donnees_3, FUN = levels)
+
+summary(tableau_donnees_3$LngtClass)
+summary(tableau_donnees_3$Age)
+#creation d'une colonne fcaohorte pour cohorte en factor ==> qui servira pour les glm
+tableau_donnees_3$fcohorte <- as.factor(tableau_donnees_3$Cohorte)
+
+#tableau_sp_c_3
+summary(tableau_sp_c_3)
+sapply(tableau_sp_c_3,FUN=function(el) sum(is.na(el)))
+sapply(tableau_sp_c_3, FUN = class)
+
+tableau_sp_c_3$Species <- as.factor(tableau_sp_c_3$Species)
+tableau_sp_c_3$Cohorte_factor <- as.factor(tableau_sp_c_3$Cohorte_factor)
+
+sapply(tableau_sp_c_3, FUN = levels)
+```
+
+
+Figure lm avec cohorte en variable explicative
+```{r, fig.width=13,fig.height=5,fig.show='hide'}
+library(ggplot2)
+##Figure
+
+ggplot(data = tableau_sp_c_3, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95) +
+  facet_wrap(~Species, scales = "free_x", ncol = 5) +
+  theme_light()
+
+#ggsave("plot_sp.png", width = 13, height = 6)
+```
+
+
+Librairies modèles
+```{r library,include=FALSE}
+library(lmtest)
+library(lme4)
+library(car)
+library(nlme)
+library(dplyr)
+library(tidyverse)
+```
+
+
+**avec indice NAO**
+```{r, include=FALSE}
+tableau_NAO <- read.csv("Monthly mean NAO index since January 1950.csv", header = FALSE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+summary(tableau_NAO)
+sapply(tableau_NAO,FUN=function(el) sum(is.na(el)))
+sapply(tableau_NAO, FUN = class)
+str(tableau_NAO)
+
+tableau_NAO <- tableau_NAO[-73,]
+
+names(tableau_NAO)[names(tableau_NAO) == "V1"] <- "Date"
+names(tableau_NAO)[c(2: 13)] = c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")
+
+
+tableau_NAO <- mutate(tableau_NAO, Moy_NAO = rowMeans(select(tableau_NAO, Janvier : Decembre), na.rm = TRUE))
+
+Moy_NAO <- rowMeans(tableau_NAO[,2:13], na.rm = TRUE) 
+tableau_NAO$Moy_NAO <- Moy_NAO
+
+#tableau_NAO2 <- tableau_NAO %>% pivot_longer(c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")) 
+#names(tableau_NAO2)[names(tableau_NAO2) == "name"] <- "Mois"
+#names(tableau_NAO2)[names(tableau_NAO2) == "value"] <- "indice_NAO"
+
+plot(tableau_NAO$Moy_NAO ~ tableau_NAO$Date)
+lm(Moy_NAO ~ Date, data = tableau_NAO)
+summary(lm(Moy_NAO ~ Date, data = tableau_NAO))
+plot(lm(Moy_NAO ~ Date, data = tableau_NAO))
+
+#summary(lmer(indice_NAO ~ Date + (1|Mois), data = tableau_NAO2))
+```
+Le tableau_NAO au dessus avec le #ont été trouvé à partir de ce site :
+<https://www.cpc.ncep.noaa.gov/products/precip/CWlink/pna/nao_index.html>
+
+```{r}
+#tableau_nao_moy_JFM <- read.csv("moyennes_nao_jfm.csv", header = FALSE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+```
+le tableau_nao_moy_JFM s'appuit sur les données de ce site :
+<https://psl.noaa.gov/data/climateindices/>
+
+<https://psl.noaa.gov/cgi-bin/data/climateindices/corr.pl?tstype1=3&custname1=&custtitle1=&tstype2=0&custname2=&custtitle2=&year1=&year2=&itypea=0&y1=&y2=&plotstyle=0&length=&lag=&iall=0&iseas=1&mon1=0&mon2=2&anom=0&climo1_yr1=&climo1_yr2=&climo2_yr1=&climo2_yr2=&Submit=Calculate+Results>
+
+moyenne du la NAO pour Janvier Fevrier Mars
+
+```{r}
+tableau_NAO <- mutate(tableau_NAO, Moy_NAO_JFM = rowMeans(select(tableau_NAO, Janvier : Mars), na.rm = TRUE))
+summary(lm(Moy_NAO_JFM ~ Date, data = tableau_NAO))
+
+table_NAO_JFM <- tableau_NAO[,c("Date", "Moy_NAO_JFM")]
+names(table_NAO_JFM)[names(table_NAO_JFM) == "Date"] <- "Cohorte"# pour que ce soit compatible avec les années cohortes des tableaux des espèces
+
+ggplot(tableau_NAO, aes(x = Date, y = Moy_NAO_JFM)) +
+  geom_point() +
+  geom_line()+
+  theme_classic()
+#ggsave("moy_nao.png", width = 13, height = 6)
+remove(tableau_NAO)
+```
+
+
+**AMO** : 
+<https://psl.noaa.gov/data/timeseries/AMO/>
+```{r, include=FALSE}
+tableau_AMO_d<- read.csv("AMO unsmoothed, detrended from the Kaplan SST V2.csv", header = FALSE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+names(tableau_AMO_d)[names(tableau_AMO_d) == "V1"] <- "Cohorte"
+names(tableau_AMO_d)[c(2: 13)] = c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")
+
+summary(tableau_AMO_d)
+sapply(tableau_AMO_d,FUN=function(el) sum(is.na(el)))
+sapply(tableau_AMO_d, FUN = class)
+str(tableau_AMO_d)
+
+tableau_AMO_d <- tableau_AMO_d[-75,]
+
+
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Janvier), colour = "#006666") +
+  theme_classic()
+
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Fevrier), colour = "#003399") +
+  theme_classic()
+    
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Mars), colour = "#9933FF") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Avril), colour = "#FF33FF") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Mai), colour = "#993366") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Juin), colour = "#990000") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Juillet), colour = "#FF6600") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Aout), colour = "#FFCC33") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Septembre), colour = "#669900") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Octobre), colour = "#66CC66") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Novembre), colour = "#00CC66") +
+  theme_classic()
+  
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Decembre), colour = "#33FFFF") +
+  theme_classic()
+
+
+
+cor(tableau_AMO_d[,c("Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre", "Decembre")])
+
+tableau_AMO_d <- mutate(tableau_AMO_d, Moy_AMO_d = rowMeans(select(tableau_AMO_d, Janvier : Decembre), na.rm = TRUE))
+ggplot(tableau_AMO_d, aes(x = Cohorte)) +
+  geom_line(aes(y = Moy_AMO_d), colour = "#CC00CC") +
+  theme_classic()
+
+tableau_AMO_d_moy <- tableau_AMO_d[,c("Cohorte", "Moy_AMO_d")]
+remove(tableau_AMO_d)
+```
+
+**AMO non détendancé**
+```{r}
+
+tableau_AMO_brute <- read.csv("AMO_non_detandence.csv", header = FALSE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+names(tableau_AMO_brute)[names(tableau_AMO_brute) == "V1"] <- "Cohorte"
+names(tableau_AMO_brute)[c(2: 13)] = c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")
+
+tableau_AMO_brute <- tableau_AMO_brute[-which(tableau_AMO_brute$Cohorte < 1948),]
+tableau_AMO_brute <- tableau_AMO_brute[-which(tableau_AMO_brute$Cohorte == "AMO"),]#on enlève la dernière ligne
+tableau_AMO_brute <- tableau_AMO_brute[-which(tableau_AMO_brute$Cohorte == 2022),]
+
+summary(tableau_AMO_brute)
+
+tableau_AMO_brute[,1] <- as.integer(tableau_AMO_brute[,1])
+tableau_AMO_brute[,2] <- as.numeric(tableau_AMO_brute[,2])
+tableau_AMO_brute[,3] <- as.numeric(tableau_AMO_brute[,3])
+tableau_AMO_brute[,4] <- as.numeric(tableau_AMO_brute[,4])
+
+sapply(tableau_AMO_brute,FUN=function(el) sum(is.na(el)))
+sapply(tableau_AMO_brute, FUN = class)
+str(tableau_AMO_brute)
+
+tableau_AMO_brute <- mutate(tableau_AMO_brute, Moy_AMO_brute = rowMeans(select(tableau_AMO_brute, Janvier : Decembre), na.rm = TRUE))
+tableau_AMO_brute_moy <- tableau_AMO_brute[,c("Cohorte", "Moy_AMO_brute")]
+#tableau_AMO_brute_moy$Cohorte <- as.numeric(tableau_AMO_brute_moy$Cohorte)
+remove(tableau_AMO_brute)
+```
+
+**GSNW**
+<http://www.pml-gulfstream.org.uk/data.htm> ==> Cruises 
+```{r, include=FALSE}
+tableau_GSNW <- read.csv("GSNW_month.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+names(tableau_GSNW)[names(tableau_GSNW) == "Year"] <- "Cohorte"
+names(tableau_GSNW)[c(2: 13)] = c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")
+
+summary(tableau_GSNW)
+sapply(tableau_GSNW,FUN=function(el) sum(is.na(el)))
+sapply(tableau_GSNW, FUN = class)
+str(tableau_GSNW)
+
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Janvier), colour = "#006666") +
+  theme_classic()
+
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Fevrier), colour = "#003399") +
+  theme_classic()
+    
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Mars), colour = "#9933FF") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Avril), colour = "#FF33FF") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Mai), colour = "#993366") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Juin), colour = "#990000") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Juillet), colour = "#FF6600") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Aout), colour = "#FFCC33") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Septembre), colour = "#669900") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Octobre), colour = "#66CC66") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Novembre), colour = "#00CC66") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Decembre), colour = "#33FFFF") +
+  theme_classic()
+
+cor(tableau_GSNW[,c("Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre", "Decembre")])
+
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Annual), colour = "#CC00CC") +
+  theme_classic()
+
+
+tableau_GSNW_moy <- tableau_GSNW[,c("Cohorte", "Annual")]
+names(tableau_GSNW_moy)[names(tableau_GSNW_moy) == "Annual"] <- "GSNW_moy"
+remove(tableau_GSNW)
+```
+
+**SST**
+```{r}
+table_SST_MN <- read.csv("table_SST_MN.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+names(table_SST_MN)[names(table_SST_MN) == "annee"] <- "Cohorte"
+```
+
+**glm**
+Fonctions utiles
+```{r}
+F_fusion_df <- function(tableau, Cohorte){
+  tableau <- merge(tableau, table_NAO_JFM, by = c(Cohorte))
+  tableau <- merge(tableau, tableau_AMO_d_moy, by = c(Cohorte))
+  tableau <- merge(tableau, tableau_AMO_brute_moy, by = c(Cohorte))
+  tableau <- merge(tableau, tableau_GSNW_moy, by = c(Cohorte))
+  tableau <- merge(tableau, table_SST_MN, by = c(Cohorte))
+  tableau <- fonction_scale_i(tableau = tableau)
+  return(tableau)
+}
+#centrer réduire les variables explicatives 
+fonction_scale_i <- function(tableau){
+  tableau <- mutate(tableau, sc_cohorte = as.numeric(scale(Cohorte)))
+  tableau <- mutate(tableau, sc_LngtClass = as.numeric(scale(LngtClass)))
+  tableau <- mutate(tableau, sc_age = as.numeric(scale(Age)))
+  tableau <- mutate(tableau, sc_Moy_NAO_JFM = as.numeric(scale(Moy_NAO_JFM)))
+  tableau <- mutate(tableau, sc_moy_AMO_d = as.numeric(scale(Moy_AMO_d)))
+  tableau <- mutate(tableau, sc_moy_AMO_brute = as.numeric(scale(Moy_AMO_brute)))
+  tableau <- mutate(tableau, sc_moy_GSNW = as.numeric(scale(GSNW_moy)))
+  tableau <- mutate(tableau, sc_SST = as.numeric(scale(sst_i)))
+}
+
+fonction_corr <- function(tableau){
+  #tableau de correlation
+  corr <- cor(tableau[which(tableau[,"Cohorte"] > 1966 & tableau[, "Cohorte"] < 2019),c("sc_cohorte", "sc_LngtClass", "sc_age", "sc_Moy_NAO_JFM", "sc_moy_AMO_d", "sc_moy_AMO_brute", "sc_moy_GSNW", "sc_SST")])
+  return(corr)
+}
+
+
+fonction_polynome<- function(tableau) {
+  tableau <- mutate(tableau, Age_2 = Age^2)
+  tableau <- mutate(tableau, Age_3 = Age^3)
+  tableau <- mutate(tableau, sc_age_2 = as.numeric(scale(Age_2)))
+  tableau <- mutate(tableau, sc_age_3 = as.numeric(scale(Age_3)))
+  tableau <- mutate(tableau, LngtClass_2 = LngtClass^2)
+  tableau <- mutate(tableau, LngtClass_3 = LngtClass^3)
+  tableau <- mutate(tableau, sc_LngtClass_2 = as.numeric(scale(LngtClass_2)))
+  tableau <- mutate(tableau, sc_LngtClass_3 = as.numeric(scale(LngtClass_3)))
+  tableau <- tableau %>% relocate (Age_2, .after = Age)
+  tableau <- tableau %>% relocate (Age_3, .after = Age_2)
+  tableau <- tableau %>% relocate (sc_age_2, .after = sc_age)
+  tableau <- tableau %>% relocate (sc_age_3, .after = sc_age_2)
+  tableau <- tableau %>% relocate (LngtClass_2, .after = LngtClass)
+  tableau <- tableau %>% relocate (LngtClass_3, .after = LngtClass_2)
+  tableau <- tableau %>% relocate (sc_LngtClass_2, .after = sc_LngtClass)
+  tableau <- tableau %>% relocate (sc_LngtClass_3, .after = sc_LngtClass_2)
+  return(tableau)
+}
+```
+
+Mettre le sexe numérique (données 0 et 1) en as.factor
+```{r}
+tableau_donnees_3$sexe_numerique <- as.factor(tableau_donnees_3$sexe_numerique)
+```
+
+
+Hareng
+```{r, include=FALSE}
+table_hareng_i <- filter(tableau_donnees_3, Species == "Clupea harengus")
+table_hareng_i <- table_hareng_i[order(table_hareng_i$Cohorte),]
+table_hareng_i <- F_fusion_df(tableau = table_hareng_i, Cohorte = "Cohorte")
+sapply(table_hareng_i, FUN = class)
+sapply(table_hareng_i, FUN = summary)
+fonction_corr(tableau = table_hareng_i)
+```
+
+
+```{r}
+#M_i_H_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+#M_i_H_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+#M_i_H_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_H_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_H_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_H_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_H_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+#M_i_H_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_H_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_H_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_H_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_H_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_H_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_H_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_H_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_H_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_H_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_H_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_H_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_H_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_H_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_H_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_H_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_H_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_H_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_H_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_H_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_H_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_H_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_H_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_H_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_H_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_H_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_H_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_H_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_H_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_H_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_H_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_H_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_H_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+#M_i_H_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_H_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_H_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_H_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_H_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_H_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_H_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+#M_i_H_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+#M_i_H_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_H_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_H_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_H_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_H_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_H_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_H_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_H_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+```
+
+
+**Aiglefin**
+```{r, include=FALSE}
+table_aiglefin_i <- filter(tableau_donnees_3, Species == "Melanogrammus aeglefinus")
+table_aiglefin_i <- table_aiglefin_i[-which(table_aiglefin_i$Age == max(table_aiglefin_i$Age)),]# individu de 22 ans ou alors enlever les individus qui ont un âgesupérieur à 10 ans 
+table_aiglefin_i <- F_fusion_df(tableau = table_aiglefin_i, Cohorte = "Cohorte")
+table_aiglefin_i <- table_aiglefin_i[order(table_aiglefin_i$Cohorte),]
+
+fonction_corr(tableau = table_aiglefin_i)
+sapply(table_aiglefin_i, FUN = class)
+sapply(table_aiglefin_i, FUN = summary)
+#table_aiglefin_i <- table_aiglefin_i[-which(table_aiglefin_i$LngtClass == 760),]
+
+#boxplot(table_aiglefin_i$sc_LngtClass)
+#test <- table_aiglefin_i[which(table_aiglefin_i$LngtClass>700),]
+#hist(test$LngtClass)
+
+
+```
+
+**Morue**
+```{r, include=FALSE}
+table_morue_i <- filter(tableau_donnees_3, Species == "Gadus morhua")
+table_morue_i <- F_fusion_df(tableau = table_morue_i, Cohorte = "Cohorte")
+table_morue_i <- table_morue_i[order(table_morue_i$Cohorte),]
+unique(table_morue_i$fcohorte)
+sapply(table_morue_i, FUN = summary)
+fonction_corr(tableau = table_morue_i)
+```
+
+**Merlan**
+```{r, include=FALSE}
+table_merlan_i <- filter(tableau_donnees_3, Species == "Merlangius merlangus")
+table_merlan_i <- table_merlan_i[-which(table_merlan_i$Age > 20),]
+table_merlan_i <- F_fusion_df(tableau = table_merlan_i, Cohorte = "Cohorte")
+
+sapply(table_merlan_i, FUN = class)
+fonction_corr(tableau = table_merlan_i)#variables age et cohorte non corrélées
+sapply(table_merlan_i, FUN = summary)
+```
+
+**Plie**
+```{r, include=FALSE}
+table_plie_i <- filter(tableau_donnees_3, Species == "Pleuronectes platessa")
+table_plie_i <- table_plie_i[order(table_plie_i$Cohorte),]
+table_plie_i <- F_fusion_df(tableau = table_plie_i, Cohorte = "Cohorte")
+
+sapply(table_plie_i, FUN = class)
+sapply(table_plie_i, FUN = summary)
+fonction_corr(tableau = table_plie_i)
+boxplot(table_plie_i$Age)
+```
+
+**Lieu**
+```{r, include=FALSE}
+table_lieu_i <- filter(tableau_donnees_3, Species == "Pollachius virens")
+table_lieu_i <- table_lieu_i[order(table_lieu_i$Cohorte),]
+table_lieu_i <- F_fusion_df(tableau = table_lieu_i, Cohorte = "Cohorte")
+unique(table_lieu_i$fcohorte)
+sapply(table_lieu_i, FUN = class)
+fonction_corr(tableau = table_lieu_i)
+```
+
+
+```{r, include=FALSE}
+table_maquereau_i <- filter(tableau_donnees_3, Species == "Scomber scombrus")
+table_maquereau_i <- table_maquereau_i[order(table_maquereau_i$Cohorte),]
+table_maquereau_i <- F_fusion_df(tableau = table_maquereau_i, Cohorte = "Cohorte")
+
+sapply(table_maquereau_i, FUN = class)
+sapply(table_maquereau_i, FUN = summary)
+```
+
+**Sprat**
+```{r, include=FALSE}
+table_sprat_i <- filter(tableau_donnees_3, Species == "Sprattus sprattus")
+table_sprat_i <- table_sprat_i[order(table_sprat_i$Cohorte),]
+table_sprat_i <- table_sprat_i[-which(table_sprat_i$Age > 6),]
+table_sprat_i <- table_sprat_i[-which(table_sprat_i$LngtClass > 160),]
+unique(table_sprat_i$fcohorte)#trous dans la série temporelle
+table_sprat_i <- F_fusion_df(tableau = table_sprat_i, Cohorte = "Cohorte")
+
+
+sapply(table_sprat_i, FUN = class)
+fonction_corr(tableau = table_sprat_i)
+sapply(table_sprat_i, FUN = summary)
+```
+
+
+**Tacaud**
+```{r, include=FALSE}
+table_tacaud_i <- filter(tableau_donnees_3, Species == "Trisopterus esmarkii")
+table_tacaud_i <- table_tacaud_i[order(table_tacaud_i$Cohorte),]
+table_tacaud_i <-table_tacaud_i[-which(table_tacaud_i$Age > 7), ] # le tacaud vis environ 5 ans 
+table_tacaud_i <- F_fusion_df(tableau = table_tacaud_i, Cohorte = "Cohorte")
+
+sapply(table_tacaud_i, FUN = class)
+sapply(table_tacaud_i, FUN = summary)
+fonction_corr(tableau = table_tacaud_i)
+```
+
+### Modèles
+```{r}
+# Nuls
+M_i_A_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+M_i_H_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+M_i_L_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+M_i_Ma_nul <- glmer(sexe_numerique ~ 1  + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+M_i_Me_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+M_i_Mo_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+M_i_P_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+M_i_S_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+M_i_T_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#Avec Cohortes
+M_i_A_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+M_i_H_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+M_i_L_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+M_i_Ma_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+M_i_Me_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+M_i_Mo_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+M_i_P_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+M_i_S_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+M_i_T_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#polynome pour âge et taille degré 2
+M_i_A_40_pat2 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 2 ) +  (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+M_i_H_40_pat2 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 2 ) +  (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+M_i_Me_40_pat2 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 2, raw = TRUE) +  (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+M_i_Mo_40_pat2 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 2 ) +  (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+M_i_P_40_pat2 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 2) +  (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+M_i_S_40_pat2 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 2) +  (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+M_i_T_40_pat2 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 2) +  (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+
+#relancer les modèles en dessous
+#polynome pour âge et taille degré 3
+#M_i_A_40_pat3 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 3) +  (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit)) #ne converge pas
+#M_i_H_40 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE ) +  (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))# ne converge pas
+M_i_Me_40_pat3 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 3 ) +  (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+#M_i_Mo_40_pat3 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE ) +  (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))# ne converge pas
+#M_i_P_40_pat3 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE) +  (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+M_i_S_40_pat3 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 3 ) +  (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+M_i_T_40_pat3 <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 3 ) +  (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#Polynome taille degré 2
+M_i_A_40_pt2 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2) + sc_age +  (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+M_i_L_40_pt2 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2) + sc_age +  (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+M_i_Mo_40_pt2 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + sc_age +  (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#Polynome âge degré 2
+M_i_Ma_40_pa2 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + poly(sc_age, degree = 2) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+#polynome taille degré 3
+M_i_L_40_pt3 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + sc_age +  (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+M_i_A_40_pt3 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + sc_age+  (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+M_i_Mo_40_pt3 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + sc_age+  (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#Polynome age degré 3
+M_i_Ma_40_pa3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + poly(sc_age, degree = 3) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+M_i_H_40_pa3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + poly(sc_age, degree = 3) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+M_i_H_40_pt3 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3, raw = TRUE) + sc_age + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#combinaisons polynomes
+M_i_H_40_pat23 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 2, raw = TRUE)+  (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))# ne converge pas
+M_i_H_402 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3 )+  (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+M_i_Mo_40_pat23 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2 )+  (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+#M_i_Mo_40_pat32 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE)+  (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))# ne converge pas
+M_i_A_40_pat23 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2 )+  (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+M_i_A_40_pat32 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3 )+  (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+M_i_Me_40_pat23 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2 )+  (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+M_i_Me_40_pat32 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3 )+  (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+M_i_P_40_pat23 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2 )+  (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+M_i_P_40_pat32 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3 )+  (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+M_i_S_40_pat23 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2 )+  (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+#M_i_S_40_pat32 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE)+  (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))# ne converge pas
+M_i_T_40_pat23 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2)+  (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+M_i_T_40_pat32 <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 3)+  (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#je remove les modèles qui n'ont pas convergés pour éviter de les utiliser 
+#remove(M_i_S_40_pat32, M_i_Mo_40_pat32, M_i_P_40_pat3, M_i_Mo_40_pat3, M_i_H_40_pat3, M_i_A_40_pat3)
+```
+#plot diagnostique de linéarité des effets
+```{r}
+library(effects)
+#plot(predictorEffects(M_i_H_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_A_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_L_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_Ma_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_Me_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_Mo_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_P_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_S_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_T_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+
+#Aiglefin
+plot(predictorEffects(M_i_A_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_A_40_pat2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_A_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_A_40_pt2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_A_40_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_A_40_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_A_40)
+AIC(M_i_A_40_pat2)
+##AIC(M_i_A_40_pat3)
+AIC(M_i_A_40_pt2)
+AIC(M_i_A_40_pat23)#
+AIC(M_i_A_40_pat32)
+
+#Lieu
+#plot(predictorEffects(M_i_L_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_L_40_pt2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_L_40_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_L_40)
+AIC(M_i_L_40_pt2)
+AIC(M_i_L_40_pt3)#
+
+#Maquereau
+#plot(predictorEffects(M_i_Ma_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_Ma_40_pa2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_Ma_40_pa3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_Ma_40)#
+AIC(M_i_Ma_40_pa2)
+AIC(M_i_Ma_40_pa3)
+
+#Merlan
+#plot(predictorEffects(M_i_Me_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_Me_40_pat2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_Me_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_Me_40_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_Me_40)
+AIC(M_i_Me_40_pat2)
+AIC(M_i_Me_40_pat3)##
+AIC(M_i_Me_40_pat23)
+AIC(M_i_Me_40_pat32)
+
+
+#Morue
+plot(predictorEffects(M_i_Mo_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_Mo_40_pat2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_Mo_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_Mo_40_pt2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_Mo_40_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_Mo_40_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_Mo_40_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_Mo_40)
+AIC(M_i_Mo_40_pat2)
+#AIC(M_i_Mo_40_pat3)
+AIC(M_i_Mo_40_pt2)
+AIC(M_i_Mo_40_pat23)
+#AIC(M_i_Mo_40_pat32)
+AIC(M_i_Mo_40_pt3)##
+
+#Plie
+#plot(predictorEffects(M_i_P_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_P_40_pat2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+##plot(predictorEffects(M_i_P_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_P_40_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_P_40_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_P_40)
+AIC(M_i_P_40_pat2)
+##AIC(M_i_P_40_pat3)
+AIC(M_i_P_40_pat23)
+AIC(M_i_P_40_pat32)#
+
+#Sprat
+#plot(predictorEffects(M_i_S_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_S_40_pat2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_S_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_S_40_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_S_40_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_S_40)
+AIC(M_i_S_40_pat2)
+AIC(M_i_S_40_pat3)#
+AIC(M_i_S_40_pat23)
+#AIC(M_i_S_40_pat32)
+
+#Tacaud
+#plot(predictorEffects(M_i_T_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_T_40_pat2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_T_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_T_40_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+#plot(predictorEffects(M_i_T_40_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_T_40)
+AIC(M_i_T_40_pat2)
+AIC(M_i_T_40_pat3)
+AIC(M_i_T_40_pat23)
+AIC(M_i_T_40_pat32)#
+
+#Hareng
+plot(predictorEffects(M_i_H_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_H_40_pat2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_H_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_H_40_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(M_i_H_402, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+AIC(M_i_H_40)
+AIC(M_i_H_40_pat2)#
+#AIC(M_i_H_40_pat3)
+#AIC(M_i_H_40_pat23)
+AIC(M_i_H_402)
+AIC(M_i_H_40_pa3)
+AIC(M_i_H_40_pt3)
+
+```
+Donc on travail sur les modèles suivant : 
+Aiglefin : M_i_A_40_pat23
+Hareng : M_i_H_40_pat2
+Lieu : M_i_L_40_pt3
+Maquereau : M_i_Ma_40
+Merlan : M_i_Me_40_pat3
+Morue : M_i_Mo_40_pt3
+Plie : M_i_P_40_pat32
+Sprat : M_i_S_40_pat3
+Tacaud : M_i_T_40_pat32
+
+
+
+
+```{r}
+vif(M_i_T_c)
+plot(M_i_T_c)
+acf(random.effects(M_i_T_c)$fcohorte)
+acf(random.effects(M_i_T_c)$Area)
+pacf(random.effects(M_i_T_c)$fcohorte)
+pacf(random.effects(M_i_T_c)$Area)
+summary(M_i_T_c)
+Anova(M_i_T_c)
+```
+
+**plot diagnostiques**
+<https://stackoverflow.com/questions/63751541/plot-does-not-show-all-diagnostic-plots-for-lme-lmer>
+<https://goodekat.github.io/ggResidpanel/reference/resid_compare.html>
+
+#### 21/04/2022
+plots diagnostiques : résidus vs predictions, résidus vs variables explicatives , les predictions (refaire le SR) vs les observations, les predictions (refaire le SR) vs les variables explicatives et regarder la linéarité des effets avec le pakage effect
+
+**Selon la procédure de Zuur, p230**
+
+*Hareng*
+```{r, include=FALSE}
+#nouveau tableau
+table_H_i2 <- select(table_hareng_i, Cohorte, Area, Species, SR_cohorte, LngtClass, Age, sexe_numerique, fcohorte, Moy_NAO_JFM ,Moy_AMO_d, Moy_AMO_brute, GSNW_moy ,sc_cohorte, sc_LngtClass ,sc_age ,sc_Moy_NAO_JFM ,sc_moy_AMO_d, sc_moy_AMO_brute, sc_moy_GSNW)
+sapply(table_hareng_i, FUN = summary)
+
+#extraction des résidus
+Res_P <- resid(M_i_H_40, type = "pearson")
+Res_D <- resid(M_i_H_40, type = "deviance")
+#Res_R <- table_hareng_i[-which(table_hareng_i$Cohorte < 1966 | table_hareng_i$Cohorte == 2021),"sexe_numerique"] - Pred_R # résidus de type réponse
+
+#extractions des prédictions (fonction de lien et réponse)
+Pred_L_M40 <- predict(M_i_H_40, type = "link")
+Pred_R_M40 <- predict(M_i_H_40, type = "response")
+
+#paramètre de surdispersion
+#surdispersion_parmtr <- sum(Res_P^2)/(n-p)
+
+#Résidus de pearson scaled
+#Res_P2 <- Res_R/sqrt(surdispersion_parmtr*Pred_R)
+
+#on rajoute les predictions dans le tableau
+#NA_vecteur <- rep(NA, 2682)
+#Pred_M40_link <- c(NA_vecteur, Pred_R_lien)
+table_H_i2 <- cbind(table_H_i2, Pred_L_M40)
+
+table_H_i2 <- cbind(table_H_i2, Pred_R_M40)
+
+#on rajoute les résidus de déviance aussi
+#Res_D_M40 <- c(NA_vecteur, Res_D)
+
+table_H_i2 <- cbind(table_H_i2, Res_D)
+
+######
+#predictions vs observation
+table_H_i2 <- mutate(table_H_i2, sexe_num_2 = as.integer(sexe_numerique))
+table_H_i2 <- table_H_i2 %>% relocate(sexe_num_2, .after = sexe_numerique)
+
+table_H_i2[which(table_H_i2$sexe_num_2 == 1),"sexe_num_2"] <- 0
+table_H_i2[which(table_H_i2$sexe_num_2 == 2),"sexe_num_2"] <- 1
+summary(table_H_i2$sexe_num_2)
+```
+
+
+**figures plot diagnostiques**
+```{r}
+#Résidus VS prediction
+plot(M_i_H_40, resid(., type = "deviance") ~ predict(., type = "response"), type=c("p","smooth"), col.line=1, col = 7, main = "deviance residuelle") 
+plot(M_i_H_40, resid(., type = "deviance") ~ predict(., type = "link"), type=c("p","smooth"), col.line=1, col = 7, main = "deviance residuelle") 
+
+
+#Résidus VS Variables explicatives
+ggplot(data = table_H_i2[-which(table_H_i2$Cohorte < 1966),], aes(x = Cohorte, y = Res_D)) +
+  geom_point(alpha = 0.01, colour = "#660033") +
+  geom_smooth(method = "gam", color = "#66CC99") +
+  ylim(-1.5,1.55) +
+  theme_light() +
+  labs(x = "Cohortes", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction du \ntemps chez le Hareng", subtitle = "sans sélection de cohortes a priori")
+
+
+ggplot(data = table_H_i2[-which(table_H_i2$Cohorte < 1966),], aes(x = LngtClass, y = Res_D)) +
+  geom_point(alpha = 0.01, colour = "#660033") +
+  geom_smooth(method = "gam", color = "#66CC99") +
+  ylim(-1.5,1.55) +
+  theme_light() +
+  labs(x = "Taille", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla taille des individus chez le Hareng", subtitle = "sans sélection de cohortes a priori")
+
+
+ggplot(data = table_H_i2[-which(table_H_i2$Cohorte < 1966),], aes(x = Age, y = Res_D)) +
+  geom_point(alpha = 0.01, colour = "#660033") +
+  geom_smooth(method = "gam", color = "#66CC99") +
+  ylim(-1.5,1.55) +
+  theme_light() +
+  labs(x = "Age", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nl'age des individus chez le Hareng", subtitle = "sans sélection de cohortes a priori")
+
+ggplot(data = table_H_i2[-which(table_H_i2$Cohorte < 1966),], aes(x = Moy_NAO_JFM, y = Res_D)) +
+  geom_point(alpha = 0.01, colour = "#660033") +
+  geom_smooth(method = "gam", color = "#66CC99") +
+  ylim(-1.5,1.55) +
+  theme_light() +
+  labs(x = "NAO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne mensuelle de la NAO sur les mois de janvier, février, mars\nchez le Hareng", subtitle = "sans sélection de cohortes a priori")
+
+
+ggplot(data = table_H_i2[-which(table_H_i2$Cohorte < 1966),], aes(x = Moy_AMO_d, y = Res_D)) +
+  geom_point(alpha = 0.01, colour = "#660033") +
+  geom_smooth(method = "gam", color = "#66CC99") +
+  ylim(-1.5,1.55) +
+  theme_light() +
+  labs(x = "AMO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle de l'AMO chez le Hareng", subtitle = "sans sélection de cohortes a priori")
+
+ggplot(data = table_H_i2[-which(table_H_i2$Cohorte < 1966),], aes(x = GSNW_moy, y = Res_D)) +
+  geom_point(alpha = 0.01, colour = "#660033") +
+  geom_smooth(method = "gam", color = "#66CC99") +
+  ylim(-1.5,1.55) +
+  theme_light() +
+  labs(x = "GSNW", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle du GSNW chez le Hareng", subtitle = "sans sélection de cohortes a priori")
+  
+
+#linéarité des effets :
+library(effects)
+plot(predictorEffects(M_i_H_40, residuals=TRUE), partial.residuals=list(lty="dashed"))
+
+#, lattice=list(layout=c(1, 4))
+
+#Reproduction du sexe ratio observé
+effectif <- rep(1, nrow(table_H_i2))
+table_H_i2 <- cbind(table_H_i2, effectif)
+table_H_i2 <- table_H_i2 %>% relocate(effectif, .before = sexe_numerique)
+summary(table_H_i2)
+
+SR_obs_H <- aggregate(effectif ~  Species + Cohorte + sexe_num_2, data = table_H_i2, FUN = sum)
+SR_obs_H <- SR_obs_H[order(SR_obs_H$Cohorte),]
+SR_obs_H <- pivot_wider(SR_obs_H, names_from = sexe_num_2, values_from = effectif)
+names(SR_obs_H)[names(SR_obs_H) == "0"] <- "Femelles"
+names(SR_obs_H)[names(SR_obs_H) == "1"] <- "Males"
+
+sum(is.na(SR_obs_H$Males))
+sum(is.na(SR_obs_H$Femelles))
+SR_obs_H <- mutate(SR_obs_H, SR_obs = Males/(Femelles + Males))
+
+#Sexe ratio prédit 
+SR_pred_H <- aggregate(Pred_R_M40 ~  Species + Cohorte, data = table_H_i2, FUN = mean)
+SR_obs_pred_H <- left_join(SR_obs_H, SR_pred_H, by = c("Species", "Cohorte"))
+remove(SR_pred_H, SR_obs_H)
+
+ggplot(SR_obs_pred_H, aes(x = Cohorte)) +
+  geom_point(aes(y = SR_obs), color = "#FFCC33", alpha = 0.5) + #Jaune
+  geom_line(aes(y = SR_obs),  color = "#CC9900") +
+  geom_point(aes(y = Pred_R_M40), color = "#339966", alpha = 0.5, shape = 5) + #vert
+  geom_line(aes(y = Pred_R_M40), color = "#009966") +
+  theme_light() +
+  labs(y = "sexe ratio", x = "Cohorte")
+
+ggplot(SR_obs_pred_H, aes (x = SR_obs, y = Pred_R_M40)) +
+  geom_point() +
+  theme_light()
+```
+
+#plot diagnostiques Hareng
+```{r}
+#on créer un sous ensemble de jeux de donnée avec les variables explicatives du modèles : deux fixées à leurs moyennes et l'autre qui varie et on fait les prédctions pour ces variables 
+
+tableau_H_i3 <- select(table_H_i2, Cohorte, Area, Species, SR_cohorte, LngtClass, Age, sexe_numerique, fcohorte, Moy_NAO_JFM ,Moy_AMO_d, Moy_AMO_brute, GSNW_moy ,sc_cohorte, sc_LngtClass ,sc_age ,sc_Moy_NAO_JFM, sc_moy_AMO_d, sc_moy_AMO_brute, sc_moy_GSNW)
+
+#Taille
+tableau_H_i3$sc_cohorte <- mean(tableau_H_i3$sc_cohorte)
+tableau_H_i3$sc_age <- mean(tableau_H_i3$sc_age, na.rm = TRUE)
+predict_T <- predict(M_i_H_40, newdata = tableau_H_i3, type = "response")
+table_H_i2 <- cbind(table_H_i2 ,predict_T)
+
+SR_pred_t_H <-aggregate(predict_T ~ Species + Cohorte, table_H_i2, FUN = mean)
+SR_obs_pred_H <- left_join(SR_obs_pred_H, SR_pred_t_H, by = c("Species", "Cohorte"))
+remove(SR_pred_t_H)
+
+#Age
+tableau_H_i3 <- select(table_H_i2, Cohorte, Area, Species, SR_cohorte, LngtClass, Age, sexe_numerique, fcohorte, Moy_NAO_JFM ,Moy_AMO_d, Moy_AMO_brute, GSNW_moy ,sc_cohorte, sc_LngtClass ,sc_age ,sc_Moy_NAO_JFM, sc_moy_AMO_d, sc_moy_AMO_brute, sc_moy_GSNW)
+
+tableau_H_i3$sc_cohorte <- mean(tableau_H_i3$sc_cohorte)
+tableau_H_i3$sc_LngtClass <- mean(tableau_H_i3$sc_LngtClass, na.rm = TRUE)
+predict_A <- predict(M_i_H_40, newdata = tableau_H_i3, type = "response")
+table_H_i2 <- cbind(table_H_i2 ,predict_A)
+
+SR_pred_a_H <-aggregate(predict_A ~ Species + Cohorte, data = table_H_i2, FUN = mean)
+SR_obs_pred_H <- left_join(SR_obs_pred_H, SR_pred_a_H, by = c("Species", "Cohorte"))
+remove(SR_pred_a_H)
+
+#Cohorte
+tableau_H_i3 <- select(table_H_i2, Cohorte, Area, Species, SR_cohorte, LngtClass, Age, sexe_numerique, fcohorte, Moy_NAO_JFM ,Moy_AMO_d, Moy_AMO_brute, GSNW_moy ,sc_cohorte, sc_LngtClass ,sc_age ,sc_Moy_NAO_JFM, sc_moy_AMO_d, sc_moy_AMO_brute, sc_moy_GSNW)
+
+tableau_H_i3$sc_age <- mean(tableau_H_i3$sc_age)
+tableau_H_i3$sc_LngtClass <- mean(tableau_H_i3$sc_LngtClass, na.rm = TRUE)
+predict_C <- predict(M_i_H_40, newdata = tableau_H_i3, type = "response")
+table_H_i2 <- cbind(table_H_i2 ,predict_C)
+
+SR_pred_c_H <-aggregate(predict_C ~ Species + Cohorte, data = table_H_i2, FUN = mean)
+SR_obs_pred_H <- left_join(SR_obs_pred_H, SR_pred_c_H, by = c("Species", "Cohorte"))
+remove(SR_pred_c_H)
+
+library(wesanderson)
+ggplot(SR_obs_pred_H, aes(x = Cohorte)) +
+  geom_point(aes(y = SR_obs, colour = "SR_obs"), alpha = 0.5) +
+  geom_line(aes(y = SR_obs, colour = "SR_obs"), size = 1) +
+  geom_point(aes(y = Pred_R_M40, colour = "Pred_R"), alpha = 0.5, shape = 5) + 
+  geom_line(aes(y = Pred_R_M40, colour = "Pred_R"), size = 1) +
+  geom_point(aes(y = predict_T, colour = "Pred_T"), alpha = 0.5, shape = 5) + 
+  geom_line(aes(y = predict_T, colour = "Pred_T"), linetype = "dashed", size = 0.8) +
+  geom_point(aes(y = predict_A, colour = "Pred_A"), alpha = 0.5, shape = 5) + 
+  geom_line(aes(y = predict_A, colour = "Pred_A"), linetype = "dashed", size = 0.8) +
+  geom_point(aes(y = predict_C, colour = "Pred_C"), alpha = 0.5, shape = 5) + 
+  geom_line(aes(y = predict_C, colour = "Pred_C"), linetype = "dashed", size = 0.8) +
+  scale_color_manual(values = wes_palette("Cavalcanti1", n = 5)) +
+  theme_light() +
+  labs(y = "sexe ratio", x = "Cohorte")
+```
+
+### Fonctions
+```{r}
+library(ggplot2)
+library(effects)
+library(wesanderson)
+#Creation d'un sous ensemble de jeu de donnée
+F_tableau_i2 <- function(tableau) {
+  tableau_sp_i2 <- select(tableau, Cohorte, Area, Species, SR_cohorte, LngtClass, Age, sexe_numerique, fcohorte, Moy_NAO_JFM ,Moy_AMO_d, Moy_AMO_brute, GSNW_moy ,sc_cohorte, sc_LngtClass ,sc_age ,sc_Moy_NAO_JFM, sc_moy_AMO_d, sc_moy_AMO_brute, sc_moy_GSNW)
+  return(tableau_sp_i2)
+}
+
+#extraction des résidus et predictions
+F_resid_pred <- function(tableau, modele) {
+  Res_P <- resid(modele, type = "pearson")#résidus de pearson
+  Res_D <- resid(modele, type = "deviance")#résidus de déviance
+  Pred_L <- predict(modele, type = "link")
+  Pred_R <- predict(modele, type = "response")
+  tableau <- cbind(tableau, Pred_L)
+  tableau <- cbind(tableau, Pred_R)
+  tableau <- cbind(tableau, Res_D)
+  tableau <- mutate(tableau, sexe_num_2 = as.integer(sexe_numerique))
+  tableau <- tableau %>% relocate(sexe_num_2, .after = sexe_numerique)
+  tableau[which(tableau$sexe_num_2 == 1),"sexe_num_2"] <- 0
+  tableau[which(tableau$sexe_num_2 == 2),"sexe_num_2"] <- 1
+  return(tableau)
+}
+
+
+F_plot_resid_pred <- function(modele){
+  Rd_vs_Pres <- plot(modele, resid(., type = "deviance") ~ predict(., type = "response"), type = c("p","smooth"), col.line = 1, col = 7, main = "résidus de déviance en fonction des prédictions de type réponse")
+  Rd_vs_Plink <- plot(modele, resid(., type = "deviance") ~ predict(., type = "link"), type = c("p", "smooth"), col.line = 1, col = 7, main = "résidus logit en fonction des prédictions de type réponse")
+  return(list("Residus_d_vs_predictions_reponse" = Rd_vs_Pres, "Residus_d_vs_predictions_lien" = Rd_vs_Plink))
+}
+
+F_SR_obs_pred <- function(tableau){
+  #Reproduction du sexe ratio observé
+  effectif <- rep(1, nrow(tableau))
+  tableau <- cbind(tableau, effectif)
+  tableau <- tableau %>% relocate(effectif, .before = sexe_numerique)
+  SR_obs_sp <- aggregate(effectif ~  Species + Cohorte + sexe_num_2, data = tableau, FUN = sum)
+  SR_obs_sp <- SR_obs_sp[order(SR_obs_sp$Cohorte),]
+  SR_obs_sp <- pivot_wider(SR_obs_sp, names_from = sexe_num_2, values_from = effectif)
+  names(SR_obs_sp)[names(SR_obs_sp) == "0"] <- "Femelles"
+  names(SR_obs_sp)[names(SR_obs_sp) == "1"] <- "Males"
+  SR_obs_sp <- mutate(SR_obs_sp, SR_obs = Males/(Femelles + Males))
+  #prediction SR modele
+  SR_pred_sp <- aggregate(Pred_R ~  Species + Cohorte, data = tableau, FUN = mean)
+  SR_obs_pred_sp <- left_join(SR_obs_sp, SR_pred_sp, by = c("Species", "Cohorte"))
+  
+  return(SR_obs_pred_sp)
+}
+
+#fonction SR prédit par le modèle selon la variabilité d'une seule variable (permet de capturer l'effet des variables une à une)
+F_SR_pred_VE <- function(tableau1, tableau2, modele, SR_obs_pred_sp, VE1, VE2, nom){
+  tableau2[, VE1] <- mean(tableau2[, VE1])
+  tableau2[, VE2] <- mean(tableau2[,VE2])
+  predict_VE <- predict(modele, newdata = tableau2, type = "response")
+  tableau1 <- cbind(tableau1, predict_VE)
+  SR_pred_VE_sp <- aggregate(predict_VE ~  Species + Cohorte, data = tableau1, FUN = mean)
+  SR_obs_pred_sp <- left_join(SR_obs_pred_sp, SR_pred_VE_sp, by = c("Species", "Cohorte"))
+  names(SR_obs_pred_sp)[names(SR_obs_pred_sp) == "predict_VE"] <- nom
+  return(SR_obs_pred_sp)
+}
+
+
+
+
+library(wesanderson)
+names(wes_palettes)
+F_plot_obs_pred <- function(tableau){
+  SRpobs_vs_cohorte <- ggplot(tableau, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "SR_obs"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "SR_obs"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "Pred_R"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "Pred_R"), size = 1) +
+    geom_point(aes(y = Pred_T, colour = "Pred_T"), alpha = 0.5, shape = 5) + #orange : pred T
+    geom_line(aes(y = Pred_T, colour = "Pred_T"), linetype = "dashed", size = 0.7) +
+    geom_point(aes(y = Pred_A, colour = "Pred_A"), alpha = 0.5, shape = 5) + #bleu : pred a 
+    geom_line(aes(y = Pred_A, colour = "Pred_A"), linetype = "dashed", size = 0.7) +
+    geom_point(aes(y = Pred_C, colour = "Pred_C"), alpha = 0.5, shape = 5) + #violet : pred C
+    geom_line(aes(y = Pred_C, colour = "Pred_C"), linetype = "dashed", size = 0.7) +
+    scale_color_manual(values = wes_palette("Cavalcanti1", n = 5)) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+  
+  SRobs_vs_SRpred <-ggplot(tableau, aes (x = SR_obs, y = Pred_R)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#666666", linetype = "dashed") +
+    xlim(0.25,0.75) +
+    ylim(0.25,0.75) +
+    theme_light()
+  return(list("SR predit et obs vs cohorte" = SRpobs_vs_cohorte, "SR predit vs SR obs"= SRobs_vs_SRpred))
+}
+
+names(wes_palettes)
+```
+
+Hareng 
+```{r}
+table_H_i2 <- F_tableau_i2(tableau = table_hareng_i)
+
+table_H_i2 <- F_resid_pred(tableau = table_H_i2, modele = M_i_H_40_pat2)
+SR_obs_pred_H <- F_SR_obs_pred(tableau = table_H_i2)
+table_H_i3 <- F_tableau_i2(tableau = table_hareng_i)
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_pat2, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_pat2, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_pat2, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_H)$`SR predit et obs vs cohorte`
+
+###############################################"
+
+table_H_i2 <- F_tableau_i2(tableau = table_hareng_i)
+
+table_H_i2 <- F_resid_pred(tableau = table_H_i2, modele = M_i_H_40)
+SR_obs_pred_H <- F_SR_obs_pred(tableau = table_H_i2)
+table_H_i3 <- F_tableau_i2(tableau = table_hareng_i)
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_H)$`SR predit et obs vs cohorte`
+
+###########################################################
+```
+
+
+**Aiglefin**
+```{r}
+table_A_i2 <-F_tableau_i2(tableau = table_aiglefin_i)
+table_A_i2 <-F_resid_pred(tableau = table_A_i2, modele = M_i_A_40)
+F_plot_resid_pred(modele = M_i_A_40)
+
+####################################
+#plot(predictorEffects(M_i_A_40, residuals=TRUE), partial.residuals=list(lty="dashed"))
+#plot(predictorEffects(M_i_A_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-4, 4))))
+
+####################################
+
+#ggplot(data = table_A_i2, aes(x = Cohorte, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Cohortes", y = "Résidus de type déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction du temps", subtitle = "sans sélection de cohortes a priori")
+  
+#ggplot(data = table_A_i2, aes(x = LngtClass, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Taille", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla taille des individus", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_A_i2, aes(x = Age, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Age", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nl'age des individus", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_A_i2, aes(x = Moy_NAO_JFM, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "NAO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne mensuelle de la NAO sur les mois de janvier, février, mars", subtitle = "sans sélection de cohortes a priori")
+
+
+#ggplot(data = table_A_i2, aes(x = Moy_AMO_d, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "AMO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle de l'AMO détendancée", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_A_i2, aes(x = Moy_AMO_brute, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "AMO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle de l'AMO brute", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_A_i2, aes(x = GSNW_moy, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "GSNW", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle du GSNW", subtitle = "sans sélection de cohortes a priori")
+
+####################################
+SR_obs_pred_A <- F_SR_obs_pred(tableau = table_A_i2)
+table_A_i3 <- F_tableau_i2(tableau = table_aiglefin_i)
+F_plot_resid_pred(modele = M_i_A_40)
+plot(predictorEffects(M_i_A_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+
+
+F_plot_obs_pred(tableau = SR_obs_pred_A)$`SR predit et obs vs cohorte`
+```
+
+```{r}
+
+table_A_i2 <- F_tableau_i2(tableau = table_aiglefin_i)
+table_A_i2 <- F_resid_pred(tableau = table_A_i2, modele = M_i_A_40_pat23)
+SR_obs_pred_A <- F_SR_obs_pred(tableau = table_A_i2)
+F_plot_resid_pred(modele = M_i_A_40_pat23)
+plot(predictorEffects(M_i_A_40_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+table_A_i3 <- F_tableau_i2(tableau = table_aiglefin_i)
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40_pat23, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40_pat23, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40_pat23, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_A)$`SR predit et obs vs cohorte`
+```
+
+**Lieu**
+```{r}
+table_L_i2 <-F_tableau_i2(tableau = table_lieu_i)
+table_L_i2 <-F_resid_pred(tableau = table_L_i2, modele = M_i_L_40)
+#F_plot_resid_pred(modele = M_i_L_40_pt3)
+
+####################################
+#plot(predictorEffects(M_i_L_40_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"))
+#plot(predictorEffects(M_i_L_40_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-4, 4))))
+
+####################################
+
+#ggplot(data = table_L_i2, aes(x = Cohorte, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Cohortes", y = "Résidus de type déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction du temps", subtitle = "sans sélection de cohortes a priori")
+  
+#ggplot(data = table_L_i2, aes(x = LngtClass, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Taille", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla taille des individus", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_L_i2, aes(x = Age, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Age", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nl'age des individus", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_L_i2, aes(x = Moy_NAO_JFM, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "NAO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne mensuelle de la NAO sur les mois de janvier, février, mars", subtitle = "sans sélection de cohortes a priori")
+
+
+#ggplot(data = table_L_i2, aes(x = Moy_AMO_d, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "AMO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle de l'AMO détendancée", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_L_i2, aes(x = Moy_AMO_brute, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "AMO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle de l'AMO brute", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_L_i2, aes(x = GSNW_moy, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "GSNW", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle du GSNW", subtitle = "sans sélection de cohortes a priori")
+
+####################################
+SR_obs_pred_L <- F_SR_obs_pred(tableau = table_L_i2)
+
+F_plot_resid_pred(modele = M_i_L_40)
+plot(predictorEffects(M_i_L_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+table_L_i3 <- F_tableau_i2(tableau = table_lieu_i)
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+
+F_plot_obs_pred(tableau = SR_obs_pred_L)$`SR predit et obs vs cohorte`
+```
+
+```{r}
+table_L_i2 <- F_tableau_i2(tableau = table_lieu_i)
+table_L_i2 <- F_resid_pred(tableau = table_L_i2, modele = M_i_L_40_pt3)
+SR_obs_pred_L <- F_SR_obs_pred(tableau = table_L_i2)
+F_plot_resid_pred(modele = M_i_L_40_pt3)
+plot(predictorEffects(M_i_L_40_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+table_L_i3 <- F_tableau_i2(tableau = table_lieu_i)
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_L)$`SR predit et obs vs cohorte`
+
+```
+
+**Maquereau**
+```{r}
+table_Ma_i2 <-F_tableau_i2(tableau = table_maquereau_i)
+table_Ma_i2 <-F_resid_pred(tableau = table_Ma_i2, modele = M_i_Ma_40)
+#F_plot_resid_pred(modele = M_i_Ma_40)
+
+####################################
+#plot(predictorEffects(M_i_Ma_40, residuals=TRUE), partial.residuals=list(lty="dashed"))
+#plot(predictorEffects(M_i_Ma_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-4, 4))))
+
+####################################
+
+#ggplot(data = table_Ma_i2, aes(x = Cohorte, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Cohortes", y = "Résidus de type déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction du temps", subtitle = "sans sélection de cohortes a priori")
+  
+#ggplot(data = table_Ma_i2, aes(x = LngtClass, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Taille", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla taille des individus", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_Ma_i2, aes(x = Age, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "Age", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nl'age des individus", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_Ma_i2, aes(x = Moy_NAO_JFM, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "NAO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne mensuelle de la NAO sur les mois de janvier, février, mars", subtitle = "sans sélection de cohortes a priori")
+
+
+#ggplot(data = table_Ma_i2, aes(x = Moy_AMO_d, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "AMO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle de l'AMO détendancée", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_Ma_i2, aes(x = Moy_AMO_brute, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "AMO", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle de l'AMO brute", subtitle = "sans sélection de cohortes a priori")
+
+#ggplot(data = table_Ma_i2, aes(x = GSNW_moy, y = Res_D)) +
+#  geom_point(alpha = 0.05, colour = "#660033") +
+#  geom_smooth(method = "gam", color = "#66CC99") +
+#  ylim(-3,3) +
+#  theme_light() +
+#  labs(x = "GSNW", y = "Résidus de déviance", title = "Distribution des résidus de type déviance du modèle 40 en fonction de \nla moyenne annuelle du GSNW", subtitle = "sans sélection de cohortes a priori")
+
+####################################
+SR_obs_pred_Ma <- F_SR_obs_pred(tableau = table_Ma_i2)
+F_plot_resid_pred(modele = M_i_Ma_40)
+plot(predictorEffects(M_i_Ma_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+table_Ma_i3 <- F_tableau_i2(tableau = table_maquereau_i)
+SR_obs_pred_Ma <- F_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = M_i_Ma_40, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_Ma <- F_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = M_i_Ma_40, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_Ma <- F_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = M_i_Ma_40, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_Ma)$`SR predit et obs vs cohorte`
+```
+
+
+**Merlan**
+```{r}
+
+
+table_Me_i2 <-F_tableau_i2(tableau = table_merlan_i)
+table_Me_i2 <-F_resid_pred(tableau = table_Me_i2, modele = M_i_Me_40)
+F_plot_resid_pred(modele = M_i_Me_40)
+plot(predictorEffects(M_i_Me_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_Me <- F_SR_obs_pred(tableau = table_Me_i2)
+table_Me_i3 <- F_tableau_i2(tableau = table_merlan_i)
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_Me)$`SR predit et obs vs cohorte`
+
+################
+table_Me_i2 <-F_tableau_i2(tableau = table_merlan_i)
+table_Me_i2 <-F_resid_pred(tableau = table_Me_i2, modele = M_i_Me_40_pat3)
+#F_plot_resid_pred(modele = M_i_Me_40_pat3)
+#plot(predictorEffects(M_i_Me_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_Me <- F_SR_obs_pred(tableau = table_Me_i2)
+table_Me_i3 <- F_tableau_i2(tableau = table_merlan_i)
+
+
+
+F_SR_pred_VE <- function(tableau1, tableau2, modele, SR_obs_pred_sp, VE1, VE2, nom){
+  tableau1 = table_Me_i2 
+  tableau2 = table_Me_i3 
+  modele = M_i_Me_40_pat3 
+  SR_obs_pred_sp = SR_obs_pred_Me 
+  VE1 = "sc_age" 
+  VE2 = "sc_LngtClass"
+  #nom = "Pred_T"
+  tableau2[, VE1] <- mean(tableau2[, VE1])
+  tableau2[, VE2] <- mean(tableau2[,VE2])
+  predict_VE <- predict(modele, newdata = tableau2, type = "response")
+  tableau1 <- cbind(tableau1, predict_VE)
+  SR_pred_VE_sp <- aggregate(predict_VE ~  Species + Cohorte, data = tableau1, FUN = mean)
+  SR_obs_pred_sp <- left_join(SR_obs_pred_sp, SR_pred_VE_sp, by = c("Species", "Cohorte"))
+  names(SR_obs_pred_sp)[names(SR_obs_pred_sp) == "predict_VE"] <- nom
+  return(SR_obs_pred_sp)
+}
+
+
+#M_i_Me_40_pat3
+nbfcohorte<-which(abs(ranef(M_i_Me_40_pat3)$fcohorte) == min(abs(ranef(M_i_Me_40_pat3)$fcohorte)))
+rownames(ranef(M_i_Me_40_pat3)$fcohorte)[nbfcohorte] #cohorte qui a le plus petit effet aléatoire
+summary(table_merlan_i$fcohorte)
+
+
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+
+
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_Me)$`SR predit et obs vs cohorte`
+
+summary(SR_obs_pred_Me)
+mean(as.numeric(table_merlan_i$sexe_numerique)-1)
+
+#exp(-0.26496)/(1+exp(-0.26496)) # sur dataframe qu'on utilise pour faire le modèle
+# 0.4341448
+
+############
+MSR<- mean(table_Me_i2$sexe_num_2)
+df.cohorte<-data.frame(sc_cohorte = unique(table_Me_i2$sc_cohorte)[order(unique(table_Me_i2$sc_cohorte))], cohorte = unique(table_Me_i2$Cohorte)[order(unique(table_Me_i2$sc_cohorte))]) 
+
+beta_cohorte <-fixef(M_i_Me_40_pat3)[which(names(fixef(M_i_Me_40_pat3)) == "sc_cohorte")]
+
+df.cohorte$pred_link <- logit(MSR) + beta_cohorte*df.cohorte$sc_cohorte
+df.cohorte$pred_reponse <- i.logit(df.cohorte$pred_link)
+mean(df.cohorte$pred_reponse)
+names(df.cohorte)[names(df.cohorte) == "cohorte"] <- "Cohorte"
+df.test <- left_join(SR_obs_pred_Me, df.cohorte, by = "Cohorte")
+
+i.logit <- function(x){
+  exp(x)/(1+exp(x))
+}
+
+
+  
+
+ggplot(df.test, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "SR_obs"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "SR_obs"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "Pred_R"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "Pred_R"), size = 1) +
+   # geom_point(aes(y = Pred_T, colour = "Pred_T"), alpha = 0.5, shape = 5) + #orange : pred T
+    #geom_line(aes(y = Pred_T, colour = "Pred_T"), linetype = "dashed", size = 0.7) +
+    #geom_point(aes(y = Pred_A, colour = "Pred_A"), alpha = 0.5, shape = 5) + #bleu : pred a 
+    #geom_line(aes(y = Pred_A, colour = "Pred_A"), linetype = "dashed", size = 0.7) +
+    geom_point(aes(y = pred_reponse, colour = "Pred_C"), alpha = 0.5, shape = 5) + #violet : pred C
+    geom_line(aes(y = pred_reponse, colour = "Pred_C"), linetype = "dashed", size = 0.7) +
+    scale_color_manual(values = wes_palette("Cavalcanti1", n = 5)) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+
+library(effects)
+plot(effect("sc_cohorte", M_i_Me_40_pat3))
+plot(allEffects(M_i_Me_40_pat3), ask = FALSE)
+```
+
+#### Important
+Ne pas utiliser predict ==> problème avec l'intercept.
+Pour la cohorte, comme c'est la même valeur pour tout le monde, on peut représenter la contribution de la cohorte à la prédiction du modèle sans avoir de décalge des précitions.
+on créer une courbe d'effet cohorte nous même : on prend le sexe ratio moyen observé comme intercept et on créer des points sur une échelle logit : y = logit(SR_moyen) + betaCohorte (paramètre de la cohorte) * sc_cohorte
+
+
+**Morue**
+```{r}
+
+table_Mo_i2 <-F_tableau_i2(tableau = table_morue_i)
+table_Mo_i2 <-F_resid_pred(tableau = table_Mo_i2, modele = M_i_Mo_40)
+F_plot_resid_pred(modele = M_i_Mo_40)
+plot(predictorEffects(M_i_Mo_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_Mo <- F_SR_obs_pred(tableau = table_Mo_i2)
+table_Mo_i3 <- F_tableau_i2(tableau = table_morue_i)
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_Mo)$`SR predit et obs vs cohorte`
+
+################
+table_Mo_i2 <-F_tableau_i2(tableau = table_morue_i)
+table_Mo_i2 <-F_resid_pred(tableau = table_Mo_i2, modele = M_i_Mo_40_pt3)
+F_plot_resid_pred(modele = M_i_Mo_40_pt3)
+plot(predictorEffects(M_i_Mo_40_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_Mo <- F_SR_obs_pred(tableau = table_Mo_i2)
+table_Mo_i3 <- F_tableau_i2(tableau = table_morue_i)
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40_pt3, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40_pt3, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40_pt3, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_Mo)$`SR predit et obs vs cohorte`
+
+############
+
+```
+
+
+**Plie**
+
+```{r}
+table_P_i2 <-F_tableau_i2(tableau = table_plie_i)
+table_P_i2 <-F_resid_pred(tableau = table_P_i2, modele = M_i_P_40)
+F_plot_resid_pred(modele = M_i_P_40)
+plot(predictorEffects(M_i_P_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_P <- F_SR_obs_pred(tableau = table_P_i2)
+table_P_i3 <- F_tableau_i2(tableau = table_plie_i)
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_P)$`SR predit et obs vs cohorte`
+
+################
+table_P_i2 <-F_tableau_i2(tableau = table_plie_i)
+table_P_i2 <-F_resid_pred(tableau = table_P_i2, modele = M_i_P_40_pat32)
+F_plot_resid_pred(modele = M_i_P_40_pat32)
+plot(predictorEffects(M_i_P_40_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_P <- F_SR_obs_pred(tableau = table_P_i2)
+table_P_i3 <- F_tableau_i2(tableau = table_plie_i)
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40_pat32, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40_pat32, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40_pat32, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_P)$`SR predit et obs vs cohorte`
+
+############
+
+
+```
+
+**Sprat**
+```{r}
+table_S_i2 <-F_tableau_i2(tableau = table_sprat_i)
+table_S_i2 <-F_resid_pred(tableau = table_S_i2, modele = M_i_S_40)
+F_plot_resid_pred(modele = M_i_S_40)
+plot(predictorEffects(M_i_S_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_S <- F_SR_obs_pred(tableau = table_S_i2)
+table_S_i3 <- F_tableau_i2(tableau = table_sprat_i)
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_S)$`SR predit et obs vs cohorte`
+
+################
+table_S_i2 <-F_tableau_i2(tableau = table_sprat_i)
+table_S_i2 <-F_resid_pred(tableau = table_S_i2, modele = M_i_S_40_pat3)
+F_plot_resid_pred(modele = M_i_S_40_pat3)
+plot(predictorEffects(M_i_S_40_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_S <- F_SR_obs_pred(tableau = table_S_i2)
+table_S_i3 <- F_tableau_i2(tableau = table_sprat_i)
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40_pat3, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40_pat3, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40_pat3, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_S)$`SR predit et obs vs cohorte`
+
+############
+
+```
+
+
+
+**Tacaud**
+```{r}
+table_T_i2 <-F_tableau_i2(tableau = table_tacaud_i)
+table_T_i2 <-F_resid_pred(tableau = table_T_i2, modele = M_i_T_40)
+F_plot_resid_pred(modele = M_i_T_40)
+plot(predictorEffects(M_i_T_40, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_T <- F_SR_obs_pred(tableau = table_T_i2)
+table_T_i3 <- F_tableau_i2(tableau = table_tacaud_i)
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_T)$`SR predit et obs vs cohorte`
+
+################
+table_T_i2 <-F_tableau_i2(tableau = table_tacaud_i)
+table_T_i2 <-F_resid_pred(tableau = table_T_i2, modele = M_i_T_40_pat32)
+F_plot_resid_pred(modele = M_i_T_40_pat32)
+plot(predictorEffects(M_i_T_40_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+SR_obs_pred_T <- F_SR_obs_pred(tableau = table_T_i2)
+table_T_i3 <- F_tableau_i2(tableau = table_tacaud_i)
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40_pat32, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40_pat32, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40_pat32, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_T)$`SR predit et obs vs cohorte`
+
+```
+
+### Sans effets aléatoires
+```{r}
+M_i_A_40_pat23_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2 ) +(1| Area), data =  table_aiglefin_i, family = binomial(link=logit))
+M_i_H_40_b <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + (1| Area), data =  table_hareng_i, family = binomial(link=logit))
+M_i_H_40_pat2_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 2)  +   (1| Area), data =  table_hareng_i, family = binomial(link=logit))
+
+M_i_L_40_pt3_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + sc_age + (1| Area), data =  table_lieu_i, family = binomial(link=logit))
+M_i_Ma_40_b <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age , data =  table_maquereau_i, family = binomial(link=logit))
+M_i_Me_40_pat3_b <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 3 )  +(1| Area), data =  table_merlan_i, family = binomial(link=logit))
+M_i_Mo_40_pt3_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + sc_age + (1| Area), data =  table_morue_i, family = binomial(link=logit))
+M_i_P_40_pat32_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3 ) + (1| Area), data =  table_plie_i, family = binomial(link=logit))
+M_i_S_40_pat3_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 3) + (1| Area), data =  table_sprat_i, family = binomial(link=logit))
+M_i_T_40_pat32_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE) +(1| Area), data =  table_tacaud_i, family = binomial(link=logit))
+```
+
+**Hareng**
+```{r}
+table_H_i2 <- F_tableau_i2(tableau = table_hareng_i)
+#fcohortemoy <- c(1996.2814, 1996.2815, 1996.2816, 1996.2817, 1996.2818, 1996.2819, rep(mean(table_H_i2$Cohorte), nrow(table_H_i2)-6))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_H_i2 <- cbind(table_H_i2, fcohortemoy)
+#1996.28147022857
+
+#M_i_H_40_b <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + (1| Area), data =  table_hareng_i, family = binomial(link=logit))
+#plot(predictorEffects(M_i_H_40_b, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+
+table_H_i2 <-F_resid_pred(tableau = table_H_i2, modele = M_i_H_40_b)
+F_plot_resid_pred(modele = M_i_H_40_b)
+SR_obs_pred_H <- F_SR_obs_pred(tableau = table_H_i2)
+table_H_i3 <-F_tableau_i2(tableau = table_hareng_i)
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_b, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_b, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_b, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+
+F_plot_obs_pred(tableau = SR_obs_pred_H)$`SR predit et obs vs cohorte`
+
+###############################################"
+table_H_i2 <- F_tableau_i2(tableau = table_hareng_i)
+#fcohortemoy <- c(1996.2814, 1996.2815, 1996.2816, 1996.2817, 1996.2818, 1996.2819, rep(mean(table_H_i2$Cohorte), nrow(table_H_i2)-6))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_H_i2 <- cbind(table_H_i2, fcohortemoy)
+
+#M_i_H_40_pat2_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 2) + (1|fcohortemoy) +   (1| Area), data =  table_H_i2, family = binomial(link=logit))
+
+F_plot_resid_pred(modele = M_i_H_40_pat2_b)
+plot(predictorEffects(M_i_H_40_pat2_b, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+
+table_H_i2 <-F_resid_pred(tableau = table_H_i2, modele = M_i_H_40_pat2_b)
+SR_obs_pred_H <- F_SR_obs_pred(tableau = table_H_i2)
+table_H_i3 <-F_tableau_i2(tableau = table_hareng_i)
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_pat2_b, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_pat2_b, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_H <- F_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = M_i_H_40_pat2_b, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+
+F_plot_obs_pred(tableau = SR_obs_pred_H)$`SR predit et obs vs cohorte`
+```
+
+**Aiglefin**
+```{r}
+table_A_i2 <- F_tableau_i2(tableau = table_aiglefin_i)
+#a <- seq(1993.48, 1993.49, 0.001)
+#fcohortemoy <- c(rep(a,100), rep(mean(table_A_i2$Cohorte), nrow(table_A_i2)-length(a)*100))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_A_i2 <- cbind(table_A_i2, fcohortemoy)
+#M_i_A_40_pat23_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2 ) +(1| Area), data =  table_aiglefin_i, family = binomial(link=logit))#boundary (singular) fit: see help('isSingular')
+
+table_A_i2 <-F_resid_pred(tableau = table_A_i2, modele = M_i_A_40_pat23_b)
+SR_obs_pred_A <- F_SR_obs_pred(tableau = table_A_i2)
+table_A_i3 <- F_tableau_i2(tableau = table_aiglefin_i)
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40_pat23_b, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40_pat23_b, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_A <- F_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = M_i_A_40_pat23_b, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_A)$`SR predit et obs vs cohorte`
+```
+
+**Lieu**
+```{r}
+table_L_i2 <- F_tableau_i2(tableau = table_lieu_i)
+#fcohortemoy <- c(2002.4935, 2002.4936, 2002.4937, 2002.4938, 2002.4939, 2002.4934, 2002.4933, 2002.4932, rep(mean(table_L_i2$Cohorte), nrow(table_L_i2)-8))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_L_i2 <- cbind(table_L_i2, fcohortemoy)
+#M_i_L_40_pt3_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + sc_age  + (1| Area), data =  table_lieu_i, family = binomial(link=logit))
+table_L_i2 <- F_resid_pred(tableau = table_L_i2, modele = M_i_L_40_pt3_b)
+
+SR_obs_pred_L <- F_SR_obs_pred(tableau = table_L_i2)
+table_L_i3 <- F_tableau_i2(tableau = table_lieu_i)
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40_pt3_b, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40_pt3_b, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_L <- F_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = M_i_L_40_pt3_b, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_L)$`SR predit et obs vs cohorte`
+```
+
+**Maquereau**
+```{r}
+table_Ma_i2 <- F_tableau_i2(tableau = table_maquereau_i)
+#fcohortemoy <- c(2009.858, 2009.857, rep(mean(table_Ma_i2$Cohorte), nrow(table_Ma_i2)-2))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_Ma_i2 <- cbind(table_Ma_i2, fcohortemoy)
+#M_i_Ma_40_b <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age, data =  table_maquereau_i, family = binomial(link=logit))
+table_Ma_i2 <- F_resid_pred(tableau = table_Ma_i2, modele = M_i_Ma_40_b)
+
+SR_obs_pred_Ma <- F_SR_obs_pred(tableau = table_Ma_i2)
+table_Ma_i3 <- F_tableau_i2(tableau = table_maquereau_i)
+SR_obs_pred_Ma <- F_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = M_i_Ma_40_b, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_Ma <- F_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = M_i_Ma_40_b, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_Ma <- F_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = M_i_Ma_40_b, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_Ma)$`SR predit et obs vs cohorte`
+```
+
+**Merlan**
+```{r}
+table_Me_i2 <-F_tableau_i2(tableau = table_merlan_i)
+#fcohortemoy <- c(1994.863, 1994.864, rep(mean(table_Me_i2$Cohorte), nrow(table_Me_i2)-2))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_Me_i2 <- cbind(table_Me_i2, fcohortemoy)
+#M_i_Me_40_pat3_b <- glmer(sexe_numerique ~ sc_cohorte +  poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 3 )  +(1| Area), data =  table_merlan_i, family = binomial(link=logit))
+table_Me_i2 <-F_resid_pred(tableau = table_Me_i2, modele = M_i_Me_40_pat3_b)
+
+#F_plot_resid_pred(modele = M_i_Me_40_pat3_b)
+SR_obs_pred_Me <- F_SR_obs_pred(tableau = table_Me_i2)
+table_Me_i3 <- F_tableau_i2(tableau = table_merlan_i)
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40_pat3_b, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40_pat3_b, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_Me <- F_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = M_i_Me_40_pat3_b, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_Me)$`SR predit et obs vs cohorte`
+```
+
+**Morue**
+```{r}
+
+table_Mo_i2 <-F_tableau_i2(tableau = table_morue_i)
+#fcohortemoy <- c(1992.774, 1992.775, rep(mean(table_Mo_i2$Cohorte), nrow(table_Mo_i2)-2))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_Mo_i2 <- cbind(table_Mo_i2, fcohortemoy)
+#M_i_Mo_40_pt3_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 3) + sc_age+   (1| Area), data =  table_morue_i, family = binomial(link=logit))
+table_Mo_i2 <-F_resid_pred(tableau = table_Mo_i2, modele = M_i_Mo_40_pt3_b)
+
+
+#F_plot_resid_pred(modele = M_i_Mo_40_pt3_b)
+SR_obs_pred_Mo <- F_SR_obs_pred(tableau = table_Mo_i2)
+table_Mo_i3 <- F_tableau_i2(tableau = table_morue_i)
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40_pt3_b, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40_pt3_b, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_Mo <- F_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = M_i_Mo_40_pt3_b, SR_obs_pred_sp = SR_obs_pred_Mo, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_Mo)$`SR predit et obs vs cohorte`
+```
+
+**Plie**
+```{r}
+table_P_i2 <-F_tableau_i2(tableau = table_plie_i)
+#fcohortemoy <- c(2005.307, 2005.306, rep(mean(table_P_i2$Cohorte), nrow(table_P_i2)-2))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_P_i2 <- cbind(table_P_i2, fcohortemoy)
+#M_i_P_40_pat32_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3 )+ (1| Area), data =  table_plie_i, family = binomial(link=logit))
+table_P_i2 <-F_resid_pred(tableau = table_P_i2, modele = M_i_P_40_pat32_b)
+
+
+#F_plot_resid_pred(modele = M_i_P_40_pat32_b)
+SR_obs_pred_P <- F_SR_obs_pred(tableau = table_P_i2)
+table_P_i3 <- F_tableau_i2(tableau = table_plie_i)
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40_pat32_b, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40_pat32_b, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_P <- F_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = M_i_P_40_pat32_b, SR_obs_pred_sp = SR_obs_pred_P, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_P)$`SR predit et obs vs cohorte`
+```
+
+**Sprat**
+```{r}
+table_S_i2 <-F_tableau_i2(tableau = table_sprat_i)
+#fcohortemoy <- c(2001.758, 2001.757, rep(mean(table_S_i2$Cohorte), nrow(table_S_i2)-2))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_S_i2 <- cbind(table_S_i2, fcohortemoy)
+#M_i_S_40_pat3_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 3)+ (1| Area), data =  table_sprat_i, family = binomial(link=logit))
+table_S_i2 <-F_resid_pred(tableau = table_S_i2, modele = M_i_S_40_pat3_b)
+
+#F_plot_resid_pred(modele = M_i_S_40_pat3_b)
+SR_obs_pred_S <- F_SR_obs_pred(tableau = table_S_i2)
+table_S_i3 <- F_tableau_i2(tableau = table_sprat_i)
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40_pat3_b, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40_pat3_b, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_S <- F_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = M_i_S_40_pat3_b, SR_obs_pred_sp = SR_obs_pred_S, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_S)$`SR predit et obs vs cohorte`
+```
+
+**Tacaud**
+```{r}
+
+table_T_i2 <-F_tableau_i2(tableau = table_tacaud_i)
+#fcohortemoy <- c(2000.215, 2000.214, rep(mean(table_T_i2$Cohorte), nrow(table_T_i2)-2))
+#fcohortemoy <- as.factor(fcohortemoy)
+#table_T_i2 <- cbind(table_T_i2, fcohortemoy)
+
+#M_i_T_40_pat32_b <- glmer(sexe_numerique ~ sc_cohorte + poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE) +(1| Area), data =  table_tacaud_i, family = binomial(link=logit))
+#summary(M_i_T_40_pat32_b)
+table_T_i2 <-F_resid_pred(tableau = table_T_i2, modele = M_i_T_40_pat32_b)
+
+#F_plot_resid_pred(modele = M_i_T_40_pat32_b)
+SR_obs_pred_T <- F_SR_obs_pred(tableau = table_T_i2)
+table_T_i3 <- F_tableau_i2(tableau = table_tacaud_i)
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40_pat32_b, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_age", VE2 = "sc_cohorte", nom = "Pred_T")
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40_pat32_b, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_LngtClass", VE2 = "sc_cohorte", nom = "Pred_A")
+SR_obs_pred_T <- F_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = M_i_T_40_pat32_b, SR_obs_pred_sp = SR_obs_pred_T, VE1 = "sc_age", VE2 = "sc_LngtClass", nom = "Pred_C")
+F_plot_obs_pred(tableau = SR_obs_pred_T)$`SR predit et obs vs cohorte`
+```
+
+
+
+# Integration des variables environnementales
+```{r}
+Mi_A_40_e <- glmer(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_aiglefin_i, family = binomial(link = "logit"))
+Mi_H__40_e <- glmer(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_hareng_i, family = binomial(link = "logit"))
+Mi_L_40_e <- glmer(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_lieu_i, family = binomial(link = "logit"))
+Mi_Ma_40_e<- glm(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST, data = table_maquereau_i, family = binomial(link = "logit"))
+Mi_Me_40_e <- glmer(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_merlan_i, family = binomial(link = "logit"))
+Mi_Mo_40_e <- glmer(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+Mi_P_40_e <- glmer(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_plie_i, family = binomial(link = "logit"))
+Mi_S_40_e <- glmer(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_sprat_i, family = binomial(link = "logit"))
+Mi_T_40_e <- glmer(sexe_numerique ~ sc_LngtClass + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_tacaud_i, family = binomial(link = "logit"))
+
+vif(Mi_A_40_e)
+vif(Mi_H__40_e)
+vif(Mi_L_40_e)
+vif(Mi_Ma_40_e)
+vif(Mi_Me_40_e)
+vif(Mi_Mo_40_e)
+vif(Mi_P_40_e)
+vif(Mi_S_40_e)
+vif(Mi_T_40_e)
+
+#Aigelfin : taille
+
+#Mi_A_40_e_pt2 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2, raw = TRUE) + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_aiglefin_i, family = binomial(link = "logit"))# ne converge pas
+Mi_A_40_e_pt3 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2) + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_aiglefin_i, family = binomial(link = "logit"))
+AIC(Mi_A_40_e_pt3)
+AIC(Mi_A_40_e)
+
+#hareng : âge et taille
+Mi_H_40_e_pat2 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 2) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_aiglefin_i, family = binomial(link = "logit"))
+Mi_H_40_e_pat23 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2, raw = TRUE) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_aiglefin_i, family = binomial(link = "logit"))
+#Mi_H_40_e_pat32 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2, raw = TRUE) + poly(sc_age, degree = 3) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_aiglefin_i, family = binomial(link = "logit"))
+#Mi_H_40_e_pat3 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_aiglefin_i, family = binomial(link = "logit"))
+remove(Mi_H_40_e_pat3, Mi_H_40_e_pat32)
+
+AIC(Mi_H_40_e_pat2) # AIC très fort
+AIC(Mi_H__40_e)
+AIC(Mi_H_40_e_pat32)
+#on utilise l'AIC du modèle simple
+
+
+#Lieu : plutôt linéaire
+Mi_L_40_e_pt3 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3) + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_lieu_i, family = binomial(link = "logit"))
+AIC(Mi_L_40_e_pt3)#
+AIC(Mi_L_40_e)
+
+#Maquereau
+#rien a faire
+
+#Merlan : surtout âge
+Mi_Me_40_e_pat3 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 3) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_merlan_i, family = binomial(link = "logit"))
+AIC(Mi_Me_40_e_pat3)#
+AIC(Mi_Me_40_e)
+
+#Morue
+#Mi_Mo_40_e_pt3 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3, raw = TRUE) + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+Mi_Mo_40_e_pa3 <- glmer(sexe_numerique ~ sc_LngtClass + poly(sc_age, degree = 3) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+Mi_Mo_40_e_pt2 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2, raw = TRUE) + sc_age + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+Mi_Mo_40_e_pa2 <- glmer(sexe_numerique ~ sc_LngtClass + poly(sc_age, degree = 2) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+Mi_Mo_40_e_pat2 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 2) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+#Mi_Mo_40_e_pat3 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 3, raw = TRUE) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+Mi_Mo_40_e_pat32 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+Mi_Mo_40_e_pat23 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3) + poly(sc_age, degree = 2, raw = TRUE) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_morue_i, family = binomial(link = "logit"))
+AIC(Mi_Mo_40_e)
+AIC(Mi_Mo_40_e_pa3)
+AIC(Mi_Mo_40_e_pt2)
+AIC(Mi_Mo_40_e_pa2)
+AIC(Mi_Mo_40_e_pat2)#3
+AIC(Mi_Mo_40_e_pat32)#2
+AIC(Mi_Mo_40_e_pat23)#1
+#remove(Mi_Mo_40_e_pat3, Mi_Mo_40_e_pt3)
+
+#Plie : age et taille
+Mi_P_40_e_pat32 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_plie_i, family = binomial(link = "logit"))
+AIC(Mi_P_40_e_pat32)#
+AIC(Mi_P_40_e)
+
+#Sprat : age et taille
+Mi_S_40_e_pat3 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 3, raw = TRUE) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_sprat_i, family = binomial(link = "logit"))#ne converge pas
+Mi_S_40_e_pat2 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 2) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_sprat_i, family = binomial(link = "logit"))
+Mi_S_40_e_pat23 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 3, raw = TRUE) + poly(sc_age, degree = 2) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_sprat_i, family = binomial(link = "logit"))
+Mi_S_40_e_pat32 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_sprat_i, family = binomial(link = "logit"))
+AIC(Mi_S_40_e_pat2)
+AIC(Mi_S_40_e_pat23)
+AIC(Mi_S_40_e_pat32)# (mais n'a pas convergé dans le cas avec cohorte)
+AIC(Mi_S_40_e)
+
+
+#Tacaud age et taille
+Mi_T_40_e_pat32 <- glmer(sexe_numerique ~ poly(sc_LngtClass, degree = 2) + poly(sc_age, degree = 3, raw = TRUE) + sc_Moy_NAO_JFM +sc_moy_AMO_d + sc_moy_GSNW + sc_SST + (1|Area), data = table_tacaud_i, family = binomial(link = "logit"))
+AIC(Mi_T_40_e_pat32)#
+AIC(Mi_T_40_e)
+
+
+
+plot(predictorEffects(Mi_H_40_e_pat2, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_L_40_e_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Me_40_e_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+```
+
+```{r}
+
+plot(predictorEffects(Mi_A_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_H__40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_L_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Ma_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Me_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Mo_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_P_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_S_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_T_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+```
+
+Fonctions à utiliser pour les variables environnementales 
+```{r}
+library(ggplot2)
+library(effects)
+library(wesanderson)
+library(palettetown)
+#Creation d'un sous ensemble de jeu de donnée
+Fenv_tableau_i2 <- function(tableau) {
+  tableau_sp_i2 <- select(tableau, Cohorte, Area, Species, SR_cohorte, LngtClass, Age, sexe_numerique, fcohorte, Moy_NAO_JFM ,Moy_AMO_d, Moy_AMO_brute, GSNW_moy ,sc_cohorte, sc_LngtClass ,sc_age ,sc_Moy_NAO_JFM, sc_moy_AMO_d, sc_moy_AMO_brute, sc_moy_GSNW, sc_SST)
+  return(tableau_sp_i2)
+}
+
+#extraction des résidus et predictions
+F_resid_pred <- function(tableau, modele) {
+  Res_P <- resid(modele, type = "pearson")#résidus de pearson
+  Res_D <- resid(modele, type = "deviance")#résidus de déviance
+  Pred_L <- predict(modele, type = "link")
+  Pred_R <- predict(modele, type = "response")
+  tableau <- cbind(tableau, Pred_L)
+  tableau <- cbind(tableau, Pred_R)
+  tableau <- cbind(tableau, Res_D)
+  tableau <- mutate(tableau, sexe_num_2 = as.integer(sexe_numerique))
+  tableau <- tableau %>% relocate(sexe_num_2, .after = sexe_numerique)
+  tableau[which(tableau$sexe_num_2 == 1),"sexe_num_2"] <- 0
+  tableau[which(tableau$sexe_num_2 == 2),"sexe_num_2"] <- 1
+  return(tableau)
+}
+
+
+F_plot_resid_pred <- function(modele){
+  Rd_vs_Pres <- plot(modele, resid(., type = "deviance") ~ predict(., type = "response"), type = c("p","smooth"), col.line = 1, col = 7, main = "résidus de déviance en fonction des prédictions de type réponse")
+  Rd_vs_Plink <- plot(modele, resid(., type = "deviance") ~ predict(., type = "link"), type = c("p", "smooth"), col.line = 1, col = 7, main = "résidus logit en fonction des prédictions de type réponse")
+  return(list("Residus_d_vs_predictions_reponse" = Rd_vs_Pres, "Residus_d_vs_predictions_lien" = Rd_vs_Plink))
+}
+
+F_SR_obs_pred <- function(tableau){
+  #Reproduction du sexe ratio observé
+  effectif <- rep(1, nrow(tableau))
+  tableau <- cbind(tableau, effectif)
+  tableau <- tableau %>% relocate(effectif, .before = sexe_numerique)
+  SR_obs_sp <- aggregate(effectif ~  Species + Cohorte + sexe_num_2, data = tableau, FUN = sum)
+  SR_obs_sp <- SR_obs_sp[order(SR_obs_sp$Cohorte),]
+  SR_obs_sp <- pivot_wider(SR_obs_sp, names_from = sexe_num_2, values_from = effectif)
+  names(SR_obs_sp)[names(SR_obs_sp) == "0"] <- "Femelles"
+  names(SR_obs_sp)[names(SR_obs_sp) == "1"] <- "Males"
+  SR_obs_sp <- mutate(SR_obs_sp, SR_obs = Males/(Femelles + Males))
+  #prediction SR modele
+  SR_pred_sp <- aggregate(Pred_R ~  Species + Cohorte, data = tableau, FUN = mean)
+  SR_obs_pred_sp <- left_join(SR_obs_sp, SR_pred_sp, by = c("Species", "Cohorte"))
+  
+  return(SR_obs_pred_sp)
+}
+# ces 4 premieres fonctions ne changent pas par rapport à avant
+
+#taille, age, NAO, AMO, GSNW, SST
+
+#fonction SR prédit par le modèle selon la variabilité d'une seule variable (permet de capturer l'effet des variables une à une)
+Fenv_SR_pred_VE <- function(tableau1, tableau2, modele, SR_obs_pred_sp, VE1, VE2,VE3, VE4, VE5, nom){
+  tableau2[, VE1] <- mean(tableau2[, VE1])
+  tableau2[, VE2] <- mean(tableau2[,VE2])
+  tableau2[, VE3] <- mean(tableau2[,VE3])
+  tableau2[, VE4] <- mean(tableau2[,VE4])
+  tableau2[, VE5] <- mean(tableau2[,VE5])
+  predict_VE <- predict(modele, newdata = tableau2, type = "response")
+  tableau1 <- cbind(tableau1, predict_VE)
+  SR_pred_VE_sp <- aggregate(predict_VE ~  Species + Cohorte, data = tableau1, FUN = mean)
+  SR_obs_pred_sp <- left_join(SR_obs_pred_sp, SR_pred_VE_sp, by = c("Species", "Cohorte"))
+  names(SR_obs_pred_sp)[names(SR_obs_pred_sp) == "predict_VE"] <- nom
+  return(SR_obs_pred_sp)
+}
+
+
+
+
+Fenv_plot_obs_pred <- function(tableau){
+  SRpobs_vs_cohorte <- ggplot(tableau, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "observé"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "observé"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "prédit"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "prédit"), size = 1) +
+    geom_point(aes(y = Pred_T, colour = "Pred_T"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_T, colour = "Pred_T"), linetype = "dashed", size = 0.7) +
+    geom_point(aes(y = Pred_A, colour = "Pred_A"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_A, colour = "Pred_A"), linetype = "dashed", size = 0.7) +
+    geom_point(aes(y = Pred_NAO, colour = "Pred_NAO"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_NAO, colour = "Pred_NAO"), linetype = "dashed", size = 0.7) +
+    geom_point(aes(y = Pred_AMO_b, colour = "Pred_AMO_b"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_AMO_b, colour = "Pred_AMO_b"), linetype = "dashed", size = 0.7) +
+    geom_point(aes(y = Pred_GSNW, colour = "Pred_GSNW"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_GSNW, colour = "Pred_GSNW"), linetype = "dashed", size = 0.7) +
+    geom_point(aes(y = Pred_SST, colour = "Pred_SST"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_SST, colour = "Pred_SST"), linetype = "dashed", size = 0.7) +
+    scale_color_brewer(palette="Dark2", name="sexe ratio", ) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+  
+  SR_obspt <-ggplot(tableau, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "observé"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "observé"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "prédit"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "prédit"), size = 1) + 
+    geom_point(aes(y = Pred_T, colour = "Pred_T"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_T, colour = "Pred_T"), linetype = "dashed", size = 0.7) +
+    scale_color_brewer(palette="Dark2", name="sexe ratio", ) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+  
+   SR_obspa <-ggplot(tableau, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "observé"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "observé"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "prédit"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "prédit"), size = 1) + 
+    geom_point(aes(y = Pred_A, colour = "Pred_A"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_A, colour = "Pred_A"), linetype = "dashed", size = 0.7) +
+    scale_color_brewer(palette="Dark2", name="sexe ratio", ) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+   
+  SR_obspNAO <-ggplot(tableau, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "observé"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "observé"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "prédit"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "prédit"), size = 1) + 
+    geom_point(aes(y = Pred_NAO, colour = "Pred_NAO"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_NAO, colour = "Pred_NAO"), linetype = "dashed", size = 0.7) +
+    scale_color_brewer(palette="Dark2", name="sexe ratio", ) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+  
+  SR_obspAMO <-ggplot(tableau, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "observé"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "observé"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "prédit"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "prédit"), size = 1) + 
+    geom_point(aes(y = Pred_AMO_b, colour = "Pred_AMO_b"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_AMO_b, colour = "Pred_AMO_b"), linetype = "dashed", size = 0.7) +
+    scale_color_brewer(palette="Dark2", name="sexe ratio", ) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+  
+  SR_obspGSNW <-ggplot(tableau, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "observé"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "observé"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "prédit"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "prédit"), size = 1) + 
+    geom_point(aes(y = Pred_GSNW, colour = "Pred_GSNW"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_GSNW, colour = "Pred_GSNW"), linetype = "dashed", size = 0.7) +
+    scale_color_brewer(palette="Dark2", name="sexe ratio", ) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+  
+  SR_obspSST <-ggplot(tableau, aes(x = Cohorte)) +
+    geom_point(aes(y = SR_obs, colour = "observé"), alpha = 0.5) + #Jaune color = "#FFCC33"
+    geom_line(aes(y = SR_obs, colour = "observé"), size = 1) +
+    geom_point(aes(y = Pred_R, colour = "prédit"), alpha = 0.5, shape = 5) + #vert color = "#339966"
+    geom_line(aes(y = Pred_R, colour = "prédit"), size = 1) + 
+    geom_point(aes(y = Pred_SST, colour = "Pred_SST"), alpha = 0.5, shape = 5) + 
+    geom_line(aes(y = Pred_SST, colour = "Pred_SST"), linetype = "dashed", size = 0.7) +
+    scale_color_brewer(palette="Dark2", name="sexe ratio", ) +
+    theme_light() +
+    labs(y = "sexe ratio", x = "Cohorte")
+  
+  SRobs_vs_SRpred <-ggplot(tableau, aes (x = SR_obs, y = Pred_R)) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#666666", linetype = "dashed") +
+    xlim(0.25,0.75) +
+    ylim(0.25,0.75) +
+    theme_light()
+  return(list("SR predit et obs vs cohorte" = SRpobs_vs_cohorte, "SR_obspt" = SR_obspt, "SR_obspa" = SR_obspa, "SR_obspNAO" = SR_obspNAO, "SR_obspAMO" = SR_obspAMO, "SR_obspGSNW" = SR_obspGSNW , "SR_obspSST" = SR_obspSST, "SR predit vs SR obs"= SRobs_vs_SRpred))
+}
+
+names(wes_palettes)
+pokedex(60, 10)
+```
+
+hareng
+```{r}
+table_H_i2 <- Fenv_tableau_i2(tableau = table_hareng_i)
+table_H_i2 <- F_resid_pred(tableau = table_H_i2, modele = Mi_H__40_e)
+F_plot_resid_pred(modele = Mi_H__40_e)
+
+SR_obs_pred_H <- F_SR_obs_pred(tableau = table_H_i2)
+table_H_i3 <- Fenv_tableau_i2(tableau = table_hareng_i)
+
+SR_obs_pred_H <- Fenv_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = Mi_H__40_e, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_obs_pred_H <- Fenv_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = Mi_H__40_e, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_obs_pred_H <- Fenv_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = Mi_H__40_e, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_obs_pred_H <- Fenv_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = Mi_H__40_e, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_obs_pred_H <- Fenv_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = Mi_H__40_e, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_obs_pred_H <- Fenv_SR_pred_VE(tableau1 = table_H_i2, tableau2 = table_H_i3, modele = Mi_H__40_e, SR_obs_pred_sp = SR_obs_pred_H, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_obs_pred_H)
+Fenv_plot_obs_pred(tableau = SR_obs_pred_H)$`SR predit et obs vs cohorte`
+```
+```{r}
+table_A_i2 <- Fenv_tableau_i2(tableau = table_aiglefin_i)
+table_A_i2 <- F_resid_pred(tableau = table_A_i2, modele = Mi_A_40_e)
+F_plot_resid_pred(modele = Mi_A_40_e)
+
+SR_obs_pred_A <- F_SR_obs_pred(tableau = table_A_i2)
+table_A_i3 <- Fenv_tableau_i2(tableau = table_aiglefin_i)
+
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_obs_pred_A)$`SR predit et obs vs cohorte`
+
+#################################
+table_A_i2 <- Fenv_tableau_i2(tableau = table_aiglefin_i)
+table_A_i2 <- F_resid_pred(tableau = table_A_i2, modele = Mi_A_40_e_pt3)
+F_plot_resid_pred(modele = Mi_A_40_e_pt3)
+
+SR_obs_pred_A <- F_SR_obs_pred(tableau = table_A_i2)
+table_A_i3 <- Fenv_tableau_i2(tableau = table_aiglefin_i)
+
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_obs_pred_A <- Fenv_SR_pred_VE(tableau1 = table_A_i2, tableau2 = table_A_i3, modele = Mi_A_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_A, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_obs_pred_A)
+```
+```{r}
+table_L_i2 <- Fenv_tableau_i2(tableau = table_lieu_i)
+table_L_i2 <- F_resid_pred(tableau = table_L_i2, modele = Mi_L_40_e)
+F_plot_resid_pred(modele = Mi_L_40_e)
+
+SR_obs_pred_L <- F_SR_obs_pred(tableau = table_L_i2)
+table_L_i3 <- Fenv_tableau_i2(tableau = table_lieu_i)
+
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_obs_pred_L)#$`SR predit et obs vs cohorte`
+
+#################################
+table_L_i2 <- Fenv_tableau_i2(tableau = table_lieu_i)
+table_L_i2 <- F_resid_pred(tableau = table_L_i2, modele = Mi_L_40_e_pt3)
+F_plot_resid_pred(modele = Mi_L_40_e_pt3)
+
+SR_obs_pred_L <- F_SR_obs_pred(tableau = table_L_i2)
+table_L_i3 <- Fenv_tableau_i2(tableau = table_lieu_i)
+
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_obs_pred_L <- Fenv_SR_pred_VE(tableau1 = table_L_i2, tableau2 = table_L_i3, modele = Mi_L_40_e_pt3, SR_obs_pred_sp = SR_obs_pred_L, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_obs_pred_L)#$`SR predit et obs vs cohorte`
+```
+
+```{r}
+
+table_Ma_i2 <- Fenv_tableau_i2(tableau = table_maquereau_i)
+table_Ma_i2 <- F_resid_pred(tableau = table_Ma_i2, modele = Mi_Ma_40_e)
+F_plot_resid_pred(modele = Mi_Ma_40_e)
+
+#plot(Mi_Ma_40_e, resid(., type = "deviance") ~ predict(., type = "response"), type = c("p","smooth"), col.line = 1, col = 7, main = "résidus de déviance en fonction des prédictions de type réponse")
+
+SR_obs_pred_Ma <- F_SR_obs_pred(tableau = table_Ma_i2)
+table_Ma_i3 <- Fenv_tableau_i2(tableau = table_maquereau_i)
+
+SR_obs_pred_Ma <- Fenv_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = Mi_Ma_40_e, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_obs_pred_Ma <- Fenv_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = Mi_Ma_40_e, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_obs_pred_Ma <- Fenv_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = Mi_Ma_40_e, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_obs_pred_Ma <- Fenv_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = Mi_Ma_40_e, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_obs_pred_Ma <- Fenv_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = Mi_Ma_40_e, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_obs_pred_Ma <- Fenv_SR_pred_VE(tableau1 = table_Ma_i2, tableau2 = table_Ma_i3, modele = Mi_Ma_40_e, SR_obs_pred_sp = SR_obs_pred_Ma, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_obs_pred_Ma)#$`SR predit et obs vs cohorte`
+
+```
+
+
+```{r}
+
+table_Me_i2 <- Fenv_tableau_i2(tableau = table_merlan_i)
+table_Me_i2 <- F_resid_pred(tableau = table_Me_i2, modele = Mi_Me_40_e)
+F_plot_resid_pred(modele = Mi_Me_40_e)
+
+SR_obs_pred_Me <- F_SR_obs_pred(tableau = table_Me_i2)
+table_Me_i3 <- Fenv_tableau_i2(tableau = table_merlan_i)
+
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+p1<-Fenv_plot_obs_pred(tableau = SR_obs_pred_Me)
+
+#################################
+table_Me_i2 <- Fenv_tableau_i2(tableau = table_merlan_i)
+table_Me_i2 <- F_resid_pred(tableau = table_Me_i2, modele = Mi_Me_40_e_pat3)
+F_plot_resid_pred(modele = Mi_Me_40_e_pat3)
+
+SR_obs_pred_Me <- F_SR_obs_pred(tableau = table_Me_i2)
+table_Me_i3 <- Fenv_tableau_i2(tableau = table_merlan_i)
+
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_obs_pred_Me <- Fenv_SR_pred_VE(tableau1 = table_Me_i2, tableau2 = table_Me_i3, modele = Mi_Me_40_e_pat3, SR_obs_pred_sp = SR_obs_pred_Me, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+p2 <-Fenv_plot_obs_pred(tableau = SR_obs_pred_Me)
+
+p1$SR_obspSST
+p2
+```
+
+
+```{r}
+table_Mo_i2 <- Fenv_tableau_i2(tableau = table_morue_i)
+table_Mo_i2 <- F_resid_pred(tableau = table_Mo_i2, modele = Mi_Mo_40_e)
+F_plot_resid_pred(modele = Mi_Mo_40_e)
+
+SR_pred_obs_Mo <- F_SR_obs_pred(tableau = table_Mo_i2)
+table_Mo_i3 <- Fenv_tableau_i2(tableau = table_morue_i)
+
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_Mo)
+
+#################################
+table_Mo_i2 <- Fenv_tableau_i2(tableau = table_morue_i)
+table_Mo_i2 <- F_resid_pred(tableau = table_Mo_i2, modele = Mi_Mo_40_e_pat23)
+F_plot_resid_pred(modele = Mi_Mo_40_e_pat23)
+
+SR_pred_obs_Mo <- F_SR_obs_pred(tableau = table_Mo_i2)
+table_Mo_i3 <- Fenv_tableau_i2(tableau = table_morue_i)
+
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_Mo <- Fenv_SR_pred_VE(tableau1 = table_Mo_i2, tableau2 = table_Mo_i3, modele = Mi_Mo_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_Mo, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_Mo)#$`SR predit et obs vs cohorte`
+```
+
+```{r}
+
+table_P_i2 <- Fenv_tableau_i2(tableau = table_plie_i)
+table_P_i2 <- F_resid_pred(tableau = table_P_i2, modele = Mi_P_40_e)
+#F_plot_resid_pred(modele = Mi_P_40_e)
+
+SR_pred_obs_P <- F_SR_obs_pred(tableau = table_P_i2)
+table_P_i3 <- Fenv_tableau_i2(tableau = table_plie_i)
+
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_P)
+
+#################################
+table_P_i2 <- Fenv_tableau_i2(tableau = table_plie_i)
+table_P_i2 <- F_resid_pred(tableau = table_P_i2, modele = Mi_P_40_e_pat32)
+#F_plot_resid_pred(modele = Mi_P_40_e_pat32)
+
+SR_pred_obs_P <- F_SR_obs_pred(tableau = table_P_i2)
+table_P_i3 <- Fenv_tableau_i2(tableau = table_plie_i)
+
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_P <- Fenv_SR_pred_VE(tableau1 = table_P_i2, tableau2 = table_P_i3, modele = Mi_P_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_P, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_P)#$`SR predit et obs vs cohorte`
+```
+
+```{r}
+
+table_S_i2 <- Fenv_tableau_i2(tableau = table_sprat_i)
+table_S_i2 <- F_resid_pred(tableau = table_S_i2, modele = Mi_S_40_e)
+#F_plot_resid_pred(modele = Mi_S_40_e)
+
+SR_pred_obs_S <- F_SR_obs_pred(tableau = table_S_i2)
+table_S_i3 <- Fenv_tableau_i2(tableau = table_sprat_i)
+
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_S)
+
+#################################
+table_S_i2 <- Fenv_tableau_i2(tableau = table_sprat_i)
+table_S_i2 <- F_resid_pred(tableau = table_S_i2, modele = Mi_S_40_e_pat32)
+#F_plot_resid_pred(modele = Mi_S_40_e_pat32)
+
+SR_pred_obs_S <- F_SR_obs_pred(tableau = table_S_i2)
+table_S_i3 <- Fenv_tableau_i2(tableau = table_sprat_i)
+
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_S)#$`SR predit et obs vs cohorte`
+
+
+#################################
+table_S_i2 <- Fenv_tableau_i2(tableau = table_sprat_i)
+table_S_i2 <- F_resid_pred(tableau = table_S_i2, modele = Mi_S_40_e_pat23)
+#F_plot_resid_pred(modele = Mi_S_40_e_pat23)
+
+SR_pred_obs_S <- F_SR_obs_pred(tableau = table_S_i2)
+table_S_i3 <- Fenv_tableau_i2(tableau = table_sprat_i)
+
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_S <- Fenv_SR_pred_VE(tableau1 = table_S_i2, tableau2 = table_S_i3, modele = Mi_S_40_e_pat23, SR_obs_pred_sp = SR_pred_obs_S, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_P)#$`SR predit et obs vs cohorte`
+```
+```{r}
+table_T_i2 <- Fenv_tableau_i2(tableau = table_tacaud_i)
+table_T_i2 <- F_resid_pred(tableau = table_T_i2, modele = Mi_T_40_e)
+#F_plot_resid_pred(modele = Mi_T_40_e)
+
+SR_pred_obs_T <- F_SR_obs_pred(tableau = table_T_i2)
+table_T_i3 <- Fenv_tableau_i2(tableau = table_tacaud_i)
+
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_T)
+
+#################################
+table_T_i2 <- Fenv_tableau_i2(tableau = table_tacaud_i)
+table_T_i2 <- F_resid_pred(tableau = table_T_i2, modele = Mi_T_40_e_pat32)
+#F_plot_resid_pred(modele = Mi_T_40_e_pat32)
+
+SR_pred_obs_T <- F_SR_obs_pred(tableau = table_T_i2)
+table_T_i3 <- Fenv_tableau_i2(tableau = table_tacaud_i)
+
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_T")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_LngtClass", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_A")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_LngtClass", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_NAO")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_LngtClass", VE4 = "sc_moy_GSNW", VE5= "sc_SST",nom = "Pred_AMO_b")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_LngtClass", VE5= "sc_SST",nom = "Pred_GSNW")
+SR_pred_obs_T <- Fenv_SR_pred_VE(tableau1 = table_T_i2, tableau2 = table_T_i3, modele = Mi_T_40_e_pat32, SR_obs_pred_sp = SR_pred_obs_T, VE1 = "sc_age", VE2 = "sc_Moy_NAO_JFM", VE3 = "sc_moy_AMO_d", VE4 = "sc_moy_GSNW", VE5= "sc_LngtClass",nom = "Pred_SST")
+
+Fenv_plot_obs_pred(tableau = SR_pred_obs_T)#$`SR predit et obs vs cohorte`
+
+```
+```{r}
+
+plot(predictorEffects(Mi_A_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_H__40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_L_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Ma_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Me_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Mo_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_P_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_S_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_T_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+```
+
+```{r}
+library(effects)
+plot(predictorEffects(Mi_A_40_e_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_H__40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_L_40_e_pt3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Ma_40_e, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Me_40_e_pat3, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_Mo_40_e_pat23, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_P_40_e_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_S_40_e_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+plot(predictorEffects(Mi_T_40_e_pat32, residuals=TRUE), partial.residuals=list(lty="dashed"), axes = list(y = list(lim = c(-6, 6))))
+
+
+```
+
+
+```{r}
+AIC(Mi_A_40_e_pt3)#
+AIC(Mi_A_40_e)
+
+AIC(M_i_H_40)
+AIC(Mi_H__40_e)
+
+AIC(Mi_L_40_e_pt3)#
+AIC(Mi_L_40_e)
+
+AIC(M_i_Ma_40)
+AIC(Mi_Ma_40_e)#
+
+AIC(Mi_Me_40_e_pat3)#
+AIC(Mi_Me_40_e)
+
+AIC(Mi_Mo_40_e_pat23)#
+AIC(Mi_Mo_40_e)
+
+AIC(Mi_P_40_e_pat32)#
+AIC(Mi_P_40_e)
+
+AIC(Mi_S_40_e_pat32)#
+AIC(Mi_S_40_e)
+
+AIC(Mi_T_40_e_pat32)#
+AIC(Mi_T_40_e)
+```
+
+```{r}
+summary(Mi_A_40_e_pt3)
+summary(Mi_H__40_e)
+summary(Mi_L_40_e_pt3)
+summary(Mi_Ma_40_e)
+summary(Mi_Me_40_e_pat3)
+summary(Mi_Mo_40_e_pat23)
+summary(Mi_P_40_e_pat32)
+summary(Mi_S_40_e_pat32)
+summary(Mi_T_40_e_pat32)
+```
+
+```{r}
+summary(Mi_A_40_e)
+summary(Mi_H__40_e)
+summary(Mi_L_40_e)
+summary(Mi_Ma_40_e)
+summary(Mi_Me_40_e)
+summary(Mi_Mo_40_e)
+summary(Mi_P_40_e)
+summary(Mi_S_40_e)
+summary(Mi_T_40_e)
+```
+
+```{r}
+vif(Mi_A_40_e)
+vif(Mi_H__40_e)
+vif(Mi_L_40_e)
+vif(Mi_Ma_40_e)
+vif(Mi_Me_40_e)
+vif(Mi_Mo_40_e)
+vif(Mi_P_40_e)
+vif(Mi_S_40_e)
+vif(Mi_T_40_e)
+
+vif(Mi_A_40_e_pt3)
+vif(Mi_H__40_e)
+vif(Mi_L_40_e_pt3)
+vif(Mi_Ma_40_e)
+vif(Mi_Me_40_e_pat3)
+vif(Mi_Mo_40_e_pat23)
+vif(Mi_P_40_e_pat32)
+vif(Mi_S_40_e_pat32)
+vif(Mi_T_40_e_pat32)
+```
+

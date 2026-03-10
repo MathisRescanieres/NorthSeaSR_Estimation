@@ -1,0 +1,2348 @@
+---
+title: "Untitled"
+author: "Héloïse CALZAN"
+date: "14/01/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+adresse d'un lien pour démarrer sur rmarkdown : <https://delladata.fr/guide-de-demarrage-en-r-markdown/>
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+je ne sais pas vraiment comment on fait mais je crois qu'il existe une option qui permet de nommer les chunks (les fenêtre de code) et on peut lancer certaines chunk en les appelant par leur nom. c'est assez pratique si on a des chunks avec des librairie dans un script long (on  n'a pas à remonter tout le script pour lancer certaines chunks) ou si on a créé des fonctions...
+```{r librairie}
+#espace de travail
+#setwd("E:\\github\\travail_github\\Stage_M2_Calzan")
+setwd("C:\\Users\\Héloïse Calzan\\Documents\\travail_github\\Stage_M2_Calzan")
+
+#librairies nécessaires
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(patchwork) 
+#library(hrbrthemes)
+library("Hmisc")
+library(scales)
+library(palettetown)
+library(viridis)
+```
+
+*importation des données*
+```{r}
+#tableau <- read.csv("SMALK_2022-01-06 11_47_25.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+
+tableau <-readODS::read_csv(path = paste0(here::here(), "/SMALK_2022-01-06 11_47_25.csv"), na ="NA", col_names = TRUE, stringsAsFactors = FALSE)
+```
+
+### Mise en forme du tableau de données
+
+*Remplacer les -9 par des valeurs manquantes dans le tableau de données brutes*
+```{r}
+NA_tableau_fonction <- function(tableau_sans_NA){
+   tableau_sans_NA[tableau_sans_NA == -9] <- NA
+  return(tableau_sans_NA)
+}
+NA_tableau <- NA_tableau_fonction(tableau)
+```
+
+*visualisation du dataframe*
+```{r}
+first_lines<-head(NA_tableau)
+```
+
+Visualisation des positions des valeurs manquantes
+```{r, results= 'hide', message = FALSE}
+#il y a pas mal d'option que l'on peut mettre par chunk, à voir si cela concerne l'affichage dans la console ou si cela concerne l'affichage du document pdf (une fois qu'on a knit)
+
+#est ce qu'il y a des NA dans le tableau?
+sum(is.na(NA_tableau$Age))#41133
+
+#Dans quelle colonne il y a des NA?       el : element de liste
+sapply(NA_tableau,FUN=function(el) sum(is.na(el))) #PlusGr(566208), Age(41133), Sex (71221), Maturity (103584), IndWgt(247492), CANotLngt (1)
+```
+
+Visualisation des types de valeurs prises par chaque colonne et des classes des données
+```{r}
+#résumé des colonnes 
+summary(NA_tableau)
+       
+#Regarder les classes des vecteurs avec des stat descriptive
+sapply(NA_tableau, FUN = class)#la classe de chaque vecteur
+
+#changer les classes de certains vecteurs de character à factor
+NA_tableau$Sex<-as.factor(NA_tableau$Sex)
+NA_tableau$Species<-as.factor(NA_tableau$Species)
+NA_tableau$PlusGr<-as.factor(NA_tableau$PlusGr)
+NA_tableau$Maturity<-as.factor(NA_tableau$Maturity)
+NA_tableau$CANoAtLngt <- as.numeric(NA_tableau$CANoAtLngt)
+NA_tableau$LngtClass <- as.numeric(NA_tableau$LngtClass)
+sapply(NA_tableau, FUN = class)
+
+#Regarder précisément les différentes valeurs prises par chaque vecteurs
+sapply(NA_tableau, FUN = levels)#cette fonction s'applique à la classe factor
+#il y a des + dans PlusGr, des U dans Sex, Maturity des lettres et des chiffres, 142 espèces 
+
+#les differentes valeurs prises par une colonne et le nombre de lignes associées
+summary(NA_tableau$Sex)
+summary(NA_tableau$Species)
+summary(NA_tableau$CANoAtLngt)
+summary(NA_tableau$LngtClass)
+
+
+summary(NA_tableau)
+remove(first_lines)
+```
+La fonction complet.cases permet d'enlever les valeurs manquantes dans un vecteur ou les lignes dans un data.frame qui comportent des valeurs manquantes.
+
+Dans la colonne "Sex" remplacer les U (pour "Undifferentieted") par des NA
+```{r}
+NA_tableau$Sex[which(NA_tableau$Sex == "U")] <- NA 
+summary(NA_tableau$Sex)
+levels(NA_tableau$Sex)
+```
+
+Dans la colonne "Age" remplacer les valeurs pour lesquelles il y a un + dans "PLusGr" par des NA
+```{r}
+NA_tableau$Age[which(NA_tableau$PlusGr == "+")] <- NA #+ : quand l'âge n'était pas déterminable par la lecture d'otolithes
+
+summary(NA_tableau$Age)
+```
+
+
+Enlever les lignes pour lesquelles il y a des valeurs manquantes dans Age, LngtClass, Sex, Year, Species et CANoAtLngt
+```{r}
+summary(NA_tableau)
+tableau_donnees_especes<-NA_tableau[complete.cases(NA_tableau[,c("LngtClass","Age","Sex","CANoAtLngt")]),]
+summary(tableau_donnees_especes)
+```
+
+On enlève la colonne PlusGr
+```{r}
+#nécessite la libraire dplyr
+tableau_donnees_especes <- tableau_donnees_especes %>% subset(select = -c(PlusGr))
+```
+
+Creation d'une colonne qui va contenir le sexe des individus de manière numérique
+```{r}
+sexe_numerique <- rep(NA, nrow(tableau_donnees_especes))#vecteur qui a la même taille que le tableau
+tableau_donnees_especes<- cbind(sexe_numerique, tableau_donnees_especes)#on le rattache au tableau
+
+#On met des 0 et des 1 pour F et M resoectivement
+tableau_donnees_especes$sexe_numerique[which(tableau_donnees_especes$Sex == "F")] <- 0 
+tableau_donnees_especes$sexe_numerique[which(tableau_donnees_especes$Sex == "M")] <- 1
+
+#bouger la nouvelle colonne à côté de la colonne Sex : nécessite la library tidyverse
+tableau_donnees_especes <- tableau_donnees_especes %>% relocate (sexe_numerique, .after = Sex)
+summary(tableau_donnees_especes)
+```
+
+
+*Creation de la colonne Cohorte*
+colonne cohorte : série temporelle sur laquelle on va se baser pour les analyses
+```{r}
+tableau_donnees_especes <- mutate(tableau_donnees_especes, Cohorte = Year - Age)
+```
+
+Compter les NA dans le tableau_donnees_especes avec la fonction sapply
+```{r}
+sapply(tableau_donnees_especes, FUN =function(el) sum(is.na(el)))
+```
+
+On enlève les tableaux de données brutes utilisés au dessus car on ne travaillera pas sur eux
+```{r}
+remove(tableau, NA_tableau)
+```
+
+Distribution des donnnées 
+```{r}
+hist(tableau_donnees_especes$Year, main = "distribution des observations selon l'année", xlab = "année", ylab = "fréquence", breaks = 15)
+
+hist(tableau_donnees_especes$Area)
+hist(tableau_donnees_especes$LngtClass)
+hist(tableau_donnees_especes$Age)
+hist(tableau_donnees_especes$sexe_numerique)#Regarder en fonction de l'espece
+hist(tableau_donnees_especes$IndWgt)
+
+hist(tableau_donnees_especes$CANoAtLngt, xlim=c(1,30))
+
+#nécessite la library ggplot2
+ggplot(tableau_donnees_especes, aes(x=CANoAtLngt))+
+  geom_histogram() +
+  scale_y_log10()
+
+hist(tableau_donnees_especes$Cohorte, main = "distribution des observations selon la cohorte", xlab = "année de cohorte", ylab = "fréquence", breaks = 15)
+```
+
+Figures 
+=> transformation log si besoin (pour le barplot)
+
+```{r, fig.width=10,fig.height=10, include=FALSE}
+#options fig.width et fig.height permet d'ajuster les tailles des figures pour pas que ce soit tassé. "Include = FALSE" c'est pour quand on lance tout le script d'un coup, cette chunk n'affichera pas la figure en dessous (peut prendre du temps et sur mon ancien ordi, ça l'éteignait)
+#figure surtout pour m'entrainer avec ggplot 
+
+#taille en fonction du poids par espèce
+ggplot(tableau_donnees_especes, aes(x = LngtClass, y = IndWgt)) +
+  scale_y_log10() +
+  geom_point(aes(colour = Sex), size = 1.3, shape = 18) + #on colorie en fonction du sexe
+  facet_wrap(~Species, scales = "free_x") + # par espèces, la longueur des axes des x varie par espèce
+  theme(axis.text.x = element_text(size=7),
+            axis.text.y = element_text(size=7),
+            strip.text = element_text(size=7, margin = margin())) # je ne sais plus exactement ce que fait cette dernière ligne
+
+```
+
+```{r, fig.width=10,fig.height=6, include=FALSE}
+ggplot(tableau_donnees_especes, aes(x=LngtClass, y=IndWgt, color=Species)) + #pas de facet, la couleur est en fonction de l'espèce
+  geom_point(shape = 18) + # on peut choisir la forme des points
+  scale_y_log10() +
+  theme(legend.key.size = unit(0.1, 'cm'),
+        legend.position = "bottom") 
+  
+```
+
+
+###Opérations
+Utilisation de la fonction aggregate : elle permet de faire des opperations sur un certain profile de donnée dans le tableau : par exemple si on veut le poids moyen des males qui mesure plus d'une certaine longueur et par espèce: il faut à la fois sélectionner le sexe que l'on veut et la taille et l'espèce et faire ensuite l'opération dessus (avant de connaitre cette commande je faisais des boucles for dans des boucles for, c'était long...) 
+
+La fonction aggregate sort un nouveau tableau à chaque fois qu'on l'utilise, cela peut être délicat si on veut accumuler des informations différentes sur les espèces (par exemple par aire d'échantillonnage), il faudra joindre des tableaux
+
+Cette chunk ne marche pas parce que aggregate ne permet pas d'utiliser une fonction qui prend plus d'un argument (en theorie on pourrait créer la fonction que l'on veut et la mettre dans la fonction aggregate)
+```{r}
+#moyenne pondérée de la classe de taille par le nombre d'individus de la classe 
+
+#fonction_moyenne_ponderee <- function(el1,el2){
+#  truc_pondere <- sum(el1*el2)/sum(el2)
+    #ou
+  #truc_pondere <- weighted.mean(el1, w = el2)
+#  return(truc_pondere)
+#}
+
+
+#mLength <- aggregate(LngtClass ~ Species + Year, 
+#                     data = tableau_donnees_especes, 
+                     #FUN = weighted.mean,
+                     #w = tableau_donnees_especes$CANoAtLngt)
+
+#ou
+
+#mLength <- aggregate(LngtClass ~ Species + Year, 
+#                     data = tableau_donnees_especes, 
+#                     FUN = fonction_moyenne_ponderee, 
+#                     el1 = tableau_donnees_especes$LngtClass, 
+#                     el2 = tableau_donnees_especes$CANoAtLngt)
+```
+
+Combien d'individus par espece + SR
+```{r, fig.width=10,fig.height=20}
+#le vrais nombre d'individus par especes et par année d'observation
+tableau_espece_year<-aggregate(CANoAtLngt ~ Species + Year, data = tableau_donnees_especes, FUN = sum) #pas un tableau particulièrement utile
+#rappel : CANoAtLngt c'est le nombre d'individus capturés qui ont un profil correspondant à une combinaison SMALK particulière (on n'a donc pas vraiment un individu par ligne)
+
+
+#le nombre d'individu par espèce et par cohorte
+tableau_espece_cohorte <- aggregate(CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_especes, FUN = sum)
+
+ggplot(tableau_espece_cohorte, aes(x = Cohorte, y = CANoAtLngt)) +
+#  scale_y_log10() +
+  geom_point() + 
+  geom_line() +
+  facet_wrap(~Species, 
+             scales = "free_y", 
+             ncol = 3)
+```
+
+Calcul du Sex ratio par espece et par année de cohorte
+```{r}
+#library(dplyr)
+#SR_fonction <- function(sexe, nb_id){
+  #SR<-weighted.mean(sum(sexe == "M")/(sum(sexe == "F")+sum(sexe == "M")), nb_id) 
+#  nb_F <- sum (nb_id[which(sexe == "F")])
+#  nb_M <- sum (nb_id[which(sexe == "M")])
+#  SR <- nb_M/(nb_F + nb_M)
+#  return(SR)
+#}
+
+#tableau_espece_cohorte_SR<- aggregate( CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_especes, FUN = SR_fonction, sexe = tableau_donnees_especes$Sex, nb_id = tableau_donnees_especes$CANoAtLngt)
+
+
+### LA fonction aggregate ne fonctionne pas quand on met plusieurs arguments dans FUN
+```
+
+
+donc on essaye une autre méthode
+```{r, fig.width=13,fig.height=20}
+###autre méthode
+tableau_espece_cohorte_FM <- aggregate(CANoAtLngt ~ Species + Cohorte + Sex, data = tableau_donnees_especes, FUN = sum) #on aggrègue par sexe, cohorte et espèce et on fait une sommes sur CANoAtLngt
+tableau_espece_cohorte_FM <- tableau_espece_cohorte_FM[order(tableau_espece_cohorte_FM$Cohorte),] #on ordonne le tableau par rapport à la colonne cohorte
+
+#on créer deux colonnes F et M (pour Femelle et Male qui contiennent pour chaque ligne l'effectif (CANoAtLngt)) avec la fonction pivot_wider (il existe aussi une fonction pivot_longer pour assembler plusieurs colonnes dans une seule) : nécessite la librairie tidyverse
+tableau_espece_cohorte_F_M <- tableau_espece_cohorte_FM %>% 
+  pivot_wider(names_from = Sex, values_from = CANoAtLngt) #j'ai créer un nouveau tableau nommer F_M pour indiquer qu'il y a une colonne par sexe
+
+#Remplacer les Na par des 0
+tableau_espece_cohorte_F_M$F[is.na(tableau_espece_cohorte_F_M$F)] <- 0
+tableau_espece_cohorte_F_M$M[is.na(tableau_espece_cohorte_F_M$M)] <- 0
+
+#renommer les colonnes pour éviter les confusions avec FALSE
+names(tableau_espece_cohorte_F_M)[names(tableau_espece_cohorte_F_M) == "F"] <- "Femelles"
+names(tableau_espece_cohorte_F_M)[names(tableau_espece_cohorte_F_M) == "M"] <- "Males"
+
+#Calcul du SR
+tableau_espece_cohorte_SR <- mutate(tableau_espece_cohorte_F_M, SR = Males/(Femelles + Males)) 
+
+#Figures du SR en fonction des cohortes 
+ggplot(tableau_espece_cohorte_SR, aes(x = Cohorte, y = SR)) +
+  geom_point() + 
+  geom_line() +
+  facet_wrap(~Species, scales = "free_x", ncol = 3)
+
+remove(tableau_espece_cohorte_F_M)
+```
+
+
+on raboute ensemble les tableaux tableau_espece_cohorte_SR et tableau_espece_cohorte avec la fonction left_join
+```{r}
+tableau_cohorte_sp_SR_eff <- left_join(tableau_espece_cohorte_SR, tableau_espece_cohorte, by = c("Species", "Cohorte"))
+remove(tableau_espece_cohorte_SR, tableau_espece_cohorte)
+```
+
+Figure du Sex-ratio et des effectifs par espèces en fonction des cohortes 
+```{r fig.height=25, fig.width=13}
+#nécessite la library patchowrk (et hrbrthemes? pas sur)
+
+# Most basic line chart
+SR_plot <- ggplot(tableau_cohorte_sp_SR_eff, aes(x=Cohorte, y=SR)) +
+  geom_point() +
+  geom_line(color="#69b3a2", size=0.7) +
+  facet_wrap(~Species, 
+             ncol = 2) +
+  labs(y = "Sex-ratio", x = "Cohorte") +
+  theme_bw()
+ 
+  
+Eff_plot <- ggplot(tableau_cohorte_sp_SR_eff, aes(x=Cohorte, y=CANoAtLngt)) +
+  geom_point() +
+  geom_line(color="grey",size=0.7) +
+  facet_wrap(~Species, 
+             scales = "free_y", 
+             ncol = 2) +
+  labs( y = "Effectifs", x = "Cohorte") + 
+  theme_bw()
+
+
+# Display both charts side by side thanks to the patchwork package
+SR_Eff_plot <- SR_plot + Eff_plot + plot_annotation(title = "Distribution du Sex-ratio et des effectifs d'espèces de poissons de mer du Nord de 1960 à 2020") 
+
+#on sauvegarde le plot dans un fichier
+#ggsave("Distribution_SR_Eff_Cohortes.pdf", plot = SR_Eff_plot, width = 13, height = 25)
+
+```
+
+Figure des effectifs pour chaque espèce
+```{r, fig.height=8, fig.width=15}
+tableau_espece<- aggregate( CANoAtLngt ~ Species, data = tableau_donnees_especes, FUN = sum)
+
+ggplot(tableau_espece, aes(x = Species, y = CANoAtLngt)) +
+  geom_bar(stat="identity", width=0.5) +
+  geom_text(aes(label=CANoAtLngt), vjust=0, hjust = -0.5, size=3) +
+  theme(legend.position = "none")  +
+  coord_flip()
+```
+
+
+
+Enlever la liste d'espèce suivante 
+Alosa fallax
+Ammodytes marinus
+Ammodytes tobianus
+Anarhichas lupus
+Brosme brosme
+Buglossidium luteum
+Chelidonichthys cuculus
+Chelidonichthys lucerna
+Dicentrarchus labrax
+*Engraulis encrasicolus?*
+Gadiculus argenteus
+Hippoglossus hippoglossus
+Lepidorhombus whiffiagonis
+Lophius budegassa
+Lophius piscatorius
+Merluccius merluccius
+Micromesistius poutassou
+Molva molva
+Myoxocephalus scorpius
+Platichthys flesus
+Pollachius pollachius
+Sardina pilchardus
+Scophthalmus maximus
+Scophthalmus rhombus
+Trachurus trachurus
+Trisopterus luscus
+Trisopterus minutus
+
+
+Les fonctions which, filter ou subset ne marchent pas parce que je ne peux pas mettre pour condition une liste de valeurs/character différents d'un coup : "la taille d'un objet plus long n'est pas multiple de la taille d'un objet plus courtla taille d'un objet plus long n'est pas multiple de la taille d'un objet plus court"
+```{r}
+#### Filtrage des espèces (code à remplacer par l'alternative codée sous la chunk) #######################
+
+liste_espece_out <- c("Alosa fallax", "Ammodytes marinus", "Ammodytes tobianus", "Anarhichas lupus", "Brosme brosme", "Buglossidium luteum", "Chelidonichthys cuculus", "Chelidonichthys lucerna", "Dicentrarchus labrax", "Gadiculus argenteus", "Hippoglossus hippoglossus", "Lepidorhombus whiffiagonis", "Lophius budegassa", "Lophius piscatorius", "Merluccius merluccius", "Micromesistius poutassou", "Molva molva", "Myoxocephalus scorpius", "Platichthys flesus", "Pollachius pollachius", "Sardina pilchardus", "Scophthalmus maximus", "Scophthalmus rhombus", "Trachurus trachurus", "Trisopterus luscus", "Trisopterus minutus")
+
+length(liste_espece_out)
+
+#nécessite la library Hmisc
+#%nin% pour enlever
+#%in% pour garder
+tableau_donnees_filtrees <- filter(tableau_donnees_especes, Species %nin% liste_espece_out) 
+summary(tableau_donnees_filtrees$Species)
+length(unique(tableau_donnees_filtrees$Species))
+
+```
+
+######################### Alternative #################################################
+
+tableau_donnees_filtrees <- subset(tableau_donnees_especes, Species != "Alosa fallax")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Ammodytes marinus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Ammodytes tobianus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Anarhichas lupus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Brosme brosme")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Buglossidium luteum")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Chelidonichthys cuculus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Chelidonichthys lucerna")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Dicentrarchus labrax")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Gadiculus argenteus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Hippoglossus hippoglossus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Lepidorhombus whiffiagonis")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Lophius budegassa")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Lophius piscatorius")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Merluccius merluccius")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Micromesistius poutassou")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Molva molva")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Myoxocephalus scorpius")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Platichthys flesus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Pollachius pollachius")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Sardina pilchardus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Scophthalmus maximus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Scophthalmus rhombus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Trachurus trachurus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Trisopterus luscus")
+tableau_donnees_filtrees <- subset(tableau_donnees_filtrees, Species != "Trisopterus minutus")
+
+summary(tableau_donnees_filtrees$Species)
+length(unique(tableau_donnees_filtrees$Species))
+
+#################################################################################################
+
+
+
+A partir d'ici on pourrait extraire le tableau_donnees_filtrees et travailler dessus dans un nouveau script R
+
+
+On retire des tableaux
+```{r}
+remove(tableau_espece, tableau_espece_year, tableau_espece_cohorte_FM, Eff_plot, SR_Eff_plot, SR_plot)
+```
+Il reste donc 
+- le tableau brute de données pour les 42 espèces non filtrées
+- le tableau qui récapitule pour chaque cohorte et pour chaque espèce, les effectifs des femelles, des mâles, les effectifs totaux et le SR
+- le tableau qui contient les 16 premières espèces qui ont passées le premier filtre (liste d'espèce à enlever)
+
+
+
+
+*Création d'un tableau qui va récapituler pour chaque année de cohorte, les espèces pêchées, leurs effectifs, la moyenne, l'écart type, le min et le max des effectifs*
+==> le but est de voir les variations des effectifs des cohortes pour chaque espèce
+
+Ici on se base sur CANoAtLngt, donc la moyenne, l'écart type, le min et le max concernent les individus qui ont les mêmes combinaisons de traits (poids, classe de longueur, maturité, âge)
+```{r}
+#tableau espèce cohorte sommes des effectifs
+tableau_sp_cohorte_eff <- aggregate(CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_filtrees, FUN = sum)
+names(tableau_sp_cohorte_eff)[names(tableau_sp_cohorte_eff) == "CANoAtLngt"] <- "Effectifs" #on renomme la colonne de CANoAtLngt
+
+#tableau espece cohorte moyenne
+tableau_sp_cohorte_moy <- aggregate(CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_filtrees, FUN = mean)
+names(tableau_sp_cohorte_moy)[names(tableau_sp_cohorte_moy) == "CANoAtLngt"] <- "Moyenne_CANoAtLngt"
+
+#tableau espece cohorte ecart type
+tableau_sp_cohorte_sd <- aggregate(CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_filtrees, FUN = sd)
+names(tableau_sp_cohorte_sd)[names(tableau_sp_cohorte_sd) == "CANoAtLngt"] <- "Ecart_type_CANoAtLngt"
+
+#tableau espece cohorte min
+tableau_sp_cohorte_min <- aggregate(CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_filtrees, FUN = min)
+names(tableau_sp_cohorte_min)[names(tableau_sp_cohorte_min) == "CANoAtLngt"] <- "Min_CANoAtLngt"
+
+#tableau espece cohorte max
+tableau_sp_cohorte_max <- aggregate(CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_filtrees, FUN = max)
+names(tableau_sp_cohorte_max)[names(tableau_sp_cohorte_max) == "CANoAtLngt"] <- "Max_CANoAtLngt"
+
+#on join tous ces tableaux 
+tableau_sp_cohorte_a <- left_join(tableau_sp_cohorte_eff, tableau_sp_cohorte_moy, by = c("Species","Cohorte"))
+tableau_sp_cohorte_b <- left_join(tableau_sp_cohorte_min, tableau_sp_cohorte_max, by = c("Species","Cohorte"))
+tableau_sp_cohorte_c <- left_join(tableau_sp_cohorte_a, tableau_sp_cohorte_sd, by = c("Species","Cohorte"))
+
+tableau_sp_cohorte2 <- left_join(tableau_sp_cohorte_c, tableau_sp_cohorte_b, by = c("Species","Cohorte"))
+
+#on enleve les tableaux qui ne servent plus
+remove(tableau_sp_cohorte_a, tableau_sp_cohorte_b, tableau_sp_cohorte_c, tableau_sp_cohorte_eff, tableau_sp_cohorte_max, tableau_sp_cohorte_min, tableau_sp_cohorte_moy, tableau_sp_cohorte_sd)
+```
+
+
+
+Création d'un tableau qui récapitule pour chaque espèce, les effectifs (de 1960 à 2020), la moyenne, l'écart type, le min et le max (par cohorte) (en utilisant le tableau calculé juste au dessus) des effectifs
+
+On n'utilise pas le filtre des cohortes
+```{r}
+#tableau espèce somme des effectifs
+tableau_sp_eff <- aggregate(CANoAtLngt ~ Species, data = tableau_donnees_filtrees, FUN = sum)
+names(tableau_sp_eff)[names(tableau_sp_eff) == "CANoAtLngt"] <- "Effectif_total"
+
+#tableau espece moyenne
+#effectifs moyen des espèces à chaque cohorte
+tableau_sp_moy <- aggregate(Effectifs ~ Species ,data = tableau_sp_cohorte2, FUN = mean ) # à partir du tableau qu'on vient de créer
+names(tableau_sp_moy)[names(tableau_sp_moy) == "Effectifs"] <- "Eff_moy_par_cohorte"
+
+#tableau espece ecart type
+tableau_sp_sd <- aggregate(Effectifs ~ Species ,data = tableau_sp_cohorte2, FUN = sd)
+names(tableau_sp_sd)[names(tableau_sp_sd) == "Effectifs"] <- "Sd_eff_par_cohorte"
+
+#tableau espece min
+tableau_sp_min <- aggregate(Effectifs ~ Species ,data = tableau_sp_cohorte2, FUN = min)
+names(tableau_sp_min)[names(tableau_sp_min) == "Effectifs"] <- "Eff_min_par_cohorte"
+
+#tableau espece max
+tableau_sp_max <- aggregate(Effectifs ~ Species ,data = tableau_sp_cohorte2, FUN = max)
+names(tableau_sp_max)[names(tableau_sp_max) == "Effectifs"] <- "Eff_max_par_cohorte"
+
+#on join tous ces tableaux 
+tableau_sp_a <- left_join(tableau_sp_eff, tableau_sp_moy, by = c("Species"))
+tableau_sp_b <- left_join(tableau_sp_min, tableau_sp_max, by = c("Species"))
+tableau_sp_c <- left_join(tableau_sp_a, tableau_sp_sd, by = c("Species"))
+
+tableau_sp2 <- left_join(tableau_sp_c, tableau_sp_b, by = c("Species")) # ce tableau donne juste des informations pour chaque espèceuniq
+
+#on enleve les tableaux qui ne servent plus
+remove(tableau_sp_a, tableau_sp_b, tableau_sp_c, tableau_sp_eff, tableau_sp_max, tableau_sp_min, tableau_sp_moy, tableau_sp_sd)
+
+remove(tableau_donnees_especes)#on utilisera pas ce tableau vu qu'on a le tableau_donnees_filtrees
+```
+
+
+
+Calcul du SR pour chaque espèce
+```{r, fig.height=5, fig.width=8}
+tableau_sp_FM <- aggregate(CANoAtLngt ~ Species + Sex, data = tableau_donnees_filtrees, FUN = sum)
+tableau_sp_FM <- tableau_sp_FM[order(tableau_sp_FM$Species),]
+
+#on créer deux colonnes F et M (pour Femelle et Male qui contiennent pour chaque ligne l'effectif (CANoAtLngt))
+tableau_sp_F_M <- tableau_sp_FM %>%
+  pivot_wider(names_from = Sex, values_from = CANoAtLngt)
+
+
+is.na(tableau_sp_F_M$F)
+is.na(tableau_sp_F_M$M)
+
+#renomer les colonnes pour éviter les confusions avec FALSE
+names(tableau_sp_F_M)[names(tableau_sp_F_M) == "F"] <- "Femelles"
+names(tableau_sp_F_M)[names(tableau_sp_F_M) == "M"] <- "Males"
+
+#Calcul du SR
+tableau_sp_SR <- mutate(tableau_sp_F_M, SR = Males/(Femelles + Males))
+remove(tableau_sp_F_M)
+#on arrondit à 3 chiffres après la virgules les valeurs de Sex-ratio pour chaque espèce
+tableau_sp_SR$SR <- round(tableau_sp_SR$SR, digits=3)
+
+#Figures du SR pour chaque espèce 
+ggplot(tableau_sp_SR, aes(x = Species, y = SR)) +
+  geom_bar(stat="identity", width=0.5) +
+  geom_text(aes(label=SR), vjust=0, hjust = -0.05, size=3) +
+  theme(legend.position = "none")  +
+  ggtitle("Sex ratio de chaque espèce (calculé sur toute les années d'obesravtion)") +
+  coord_flip()  
+
+tableau_sp <- left_join(tableau_sp_SR, tableau_sp2, by = "Species")
+remove(tableau_sp_FM, tableau_sp2, tableau_sp_SR)
+```
+
+
+Calcul du SR par espèce et par cohorte  (le nouveau tableau remplacera le tableau_cohorte_sp_SR_eff qui contient les informations pour les 41 espèces)(on pourrait filtrer les informations directement dans ce tableau)
+```{r}
+#on calcul pour chaque cohorte le nombre de femelle et de mâles par espèce
+tableau_sp_cohorte_FM <- aggregate(CANoAtLngt ~ Species + Cohorte + Sex, data = tableau_donnees_filtrees, FUN = sum)
+tableau_sp_cohorte_FM <- tableau_sp_cohorte_FM[order(tableau_sp_cohorte_FM$Cohorte),]
+
+
+tableau_sp_cohorte_F_M <- tableau_sp_cohorte_FM %>%
+  pivot_wider(names_from = Sex, values_from = CANoAtLngt)
+
+sum(is.na(tableau_sp_cohorte_F_M$F))
+sum(is.na(tableau_sp_cohorte_F_M$M))
+
+#Remplacer les Na par des 0
+tableau_sp_cohorte_F_M$F[is.na(tableau_sp_cohorte_F_M$F)] <- 0
+tableau_sp_cohorte_F_M$M[is.na(tableau_sp_cohorte_F_M$M)] <- 0
+
+#renomer les colonnes pour éviter les confusions avec FALSE
+names(tableau_sp_cohorte_F_M)[names(tableau_sp_cohorte_F_M) == "F"] <- "Femelles"
+names(tableau_sp_cohorte_F_M)[names(tableau_sp_cohorte_F_M) == "M"] <- "Males"
+
+#Calcul du SR
+tableau_sp_cohorte_SR <- mutate(tableau_sp_cohorte_F_M, SR = Males/(Femelles + Males))
+remove(tableau_sp_cohorte_F_M)
+
+#on arrondit à 3 chiffres après la virgules les valeurs de Sex-ratio pour chaque espèce
+#tableau_sp_cohorte_SR$SR <- round(tableau_sp_cohorte_SR$SR, digits=3)
+
+tableau_sp_cohorte_2 <- left_join(tableau_sp_cohorte2, tableau_sp_cohorte_SR, by = c("Species", "Cohorte"))
+remove(tableau_sp_cohorte2, tableau_sp_cohorte_SR, tableau_sp_cohorte_FM, tableau_cohorte_sp_SR_eff)
+```
+Je vais faire la même chose qu'au dessus mais pour avoir le SR en fonction de l'année d'observation (comme ça on pourra comparer les deux)
+```{r, fig.height=10, fig.width=10}
+tableau_sp_year_FM <- aggregate(CANoAtLngt ~ Species + Year + Sex, data = tableau_donnees_filtrees, FUN = sum)
+tableau_sp_year_FM <- tableau_sp_year_FM[order(tableau_sp_year_FM$Year),]
+
+tableau_sp_year_F_M <- tableau_sp_year_FM %>%
+  pivot_wider(names_from = Sex, values_from = CANoAtLngt)
+
+tableau_sp_year_F_M$F[is.na(tableau_sp_year_F_M$F)] <- 0
+tableau_sp_year_F_M$M[is.na(tableau_sp_year_F_M$M)] <- 0
+#renomer les colonnes pour éviter les confusions avec FALSE
+names(tableau_sp_year_F_M)[names(tableau_sp_year_F_M) == "F"] <- "Femelles"
+names(tableau_sp_year_F_M)[names(tableau_sp_year_F_M) == "M"] <- "Males"
+tableau_sp_year_SR <- mutate(tableau_sp_year_F_M, SR = Males/(Femelles + Males))
+remove(tableau_sp_year_F_M, tableau_sp_year_FM)
+
+unique(as.factor(tableau_sp_year_SR$Year))[which(!unique(as.factor(tableau_sp_year_SR$Year)) %in% unique(as.factor(tableau_sp_cohorte_2$Cohorte)))]
+unique(as.factor(tableau_sp_cohorte_2$Cohorte))[which(!unique(as.factor(tableau_sp_cohorte_2$Cohorte)) %in% unique(as.factor(tableau_sp_year_SR$Year)))] 
+unique(as.factor(tableau_sp_year_SR$Year)) %>% length()
+unique(as.factor(tableau_sp_cohorte_2$Cohorte)) %>% length()
+
+tableau_sp_year_SR$Year <- as.character(tableau_sp_year_SR$Year)
+names(tableau_sp_year_SR)[which(names(tableau_sp_year_SR)== "Year")] <- "date"
+names(tableau_sp_year_SR)[which(names(tableau_sp_year_SR)== "SR")] <- "SR_year"
+names(tableau_sp_year_SR)[which(names(tableau_sp_year_SR)== "Femelles")] <- "Femelles_year"
+names(tableau_sp_year_SR)[which(names(tableau_sp_year_SR)== "Males")] <- "Males_year"
+
+
+
+tableau_sp_cohorte_year <- tableau_sp_cohorte_2
+tableau_sp_cohorte_year$date <- as.character(tableau_sp_cohorte_year$Cohorte)
+tableau_sp_cohorte_year <- tableau_sp_cohorte_year %>% relocate(date, .after = Cohorte)
+
+tableau_sp_cohorte_year <- full_join(tableau_sp_cohorte_year, tableau_sp_year_SR, by = c("Species", "date"))
+
+
+
+tableau_sp_cohorte_year$date <- as.numeric(tableau_sp_cohorte_year$date)
+
+sp_final <- c("Clupea harengus", "Gadus morhua", "Melanogrammus aeglefinus", "Merlangius merlangus", "Microstomus kitt", "Pleuronectes platessa", "Pollachius virens", "Scomber scombrus", "Sprattus sprattus", "Trisopterus esmarkii")
+
+#unique(tableau_sp_cohorte_year$Species)[which(!unique(tableau_sp_cohorte_year$Species) %in% sp_final)]
+#sp_final[which(!sp_final %in% unique(tableau_sp_cohorte_year$Species))]
+
+ggplot(tableau_sp_cohorte_year[which(tableau_sp_cohorte_year$Species %in% sp_final),], aes(x = date)) +
+  geom_line(aes(y = SR), color= "hotpink4", alpha = 0.7, size = 1, na.rm = TRUE) +
+  geom_point(aes(y = SR), color = "hotpink4", alpha = 0.7, size = 0.9, na.rm = TRUE) +
+  geom_line(aes(y = SR_year), color = "darkseagreen4", alpha = 0.7, size = 1, na.rm = TRUE) +
+  geom_point(aes(y = SR_year),  color = "darkseagreen4", alpha = 0.7, size = 0.9, na.rm = TRUE) +
+  facet_wrap(~Species, ncol = 2, scales = "free") +
+  theme_bw()+
+  ggtitle("distribution du sex-ratio en fonction des cohorte")
+
+ggplot(tableau_sp_cohorte_year[which(tableau_sp_cohorte_year$Species == "Clupea harengus"),], aes(x = date)) +
+  geom_line(aes(y = SR), color= "hotpink4", alpha = 0.7, size = 1) +
+  geom_point(aes(y = SR), color = "hotpink4", alpha = 0.7, size = 0.9) +
+  geom_line(aes(y = SR_year), color = "darkseagreen4", alpha = 0.7, size = 1, na.rm = TRUE) +
+  geom_point(aes(y = SR_year),  color = "darkseagreen4", alpha = 0.7, size = 0.9, na.rm = TRUE) +
+  facet_wrap(~Species, ncol = 2, scales = "free") +
+  theme_bw()+
+  ggtitle("distribution du sex-ratio en fonction des cohorte")
+```
+
+
+```{r}
+ggplot(tableau_sp_cohorte_year[which(tableau_sp_cohorte_year$Species == "Clupea harengus"),], aes(x = date)) +
+  geom_line(aes(y = SR), color= "hotpink4", alpha = 0.7, size = 1) +
+  geom_point(aes(y = SR), color = "hotpink4", alpha = 0.7, size = 0.9) +
+  geom_line(aes(y = SR_year), color = "darkseagreen4", alpha = 0.7, size = 1, na.rm = TRUE) +
+  geom_point(aes(y = SR_year),  color = "darkseagreen4", alpha = 0.7, size = 0.9, na.rm = TRUE) +
+  facet_wrap(~Species, ncol = 2, scales = "free") +
+  theme_bw()+
+  ggtitle("distribution du sex-ratio en fonction des cohorte")
+
+
+#ggsave(filename = "SR_year_cohorte_Ch.png", width = 7, height = 5)
+
+ggplot(tableau_sp_cohorte_year[which(tableau_sp_cohorte_year$Species == "Merlangius merlangus"),], aes(x = date)) +
+  geom_line(aes(y = SR), color= "hotpink4", alpha = 0.7, size = 1) +
+  geom_point(aes(y = SR), color = "hotpink4", alpha = 0.7, size = 0.9) +
+  geom_line(aes(y = SR_year), color = "darkseagreen4", alpha = 0.7, size = 1, na.rm = TRUE) +
+  geom_point(aes(y = SR_year),  color = "darkseagreen4", alpha = 0.7, size = 0.9, na.rm = TRUE) +
+  facet_wrap(~Species, ncol = 2, scales = "free") +
+  theme_bw()+
+  ggtitle("distribution du sex-ratio en fonction des cohorte")
+
+
+#ggsave(filename = "SR_year_cohorte_Mm.png", width = 7, height = 5)
+
+ggplot(tableau_sp_cohorte_year[which(tableau_sp_cohorte_year$Species == "Trisopterus esmarkii"),], aes(x = date)) +
+  geom_line(aes(y = SR), color= "hotpink4", alpha = 0.7, size = 1) +
+  geom_point(aes(y = SR), color = "hotpink4", alpha = 0.7, size = 0.9) +
+  geom_line(aes(y = SR_year), color = "darkseagreen4", alpha = 0.7, size = 1, na.rm = TRUE) +
+  geom_point(aes(y = SR_year),  color = "darkseagreen4", alpha = 0.7, size = 0.9, na.rm = TRUE) +
+  facet_wrap(~Species, ncol = 2, scales = "free") +
+  theme_bw()+
+  ggtitle("distribution du sex-ratio en fonction des cohorte")
+
+
+#ggsave(filename = "SR_year_cohorte_Te.png", width = 7, height = 5)
+
+remove(tableau_sp_year_SR)
+```
+
+
+
+Figure à partir du tableau_sp_cohorte_2
+```{r, fig.height=10, fig.width=10}
+#effectifs mâles et femelles par années de cohortes et par espèces
+ggplot(tableau_sp_cohorte_2, aes(x = Cohorte)) +
+  geom_point(aes(y = Femelles, color ="blue")) +
+  geom_point(aes(y = Males, color ="yellow")) +
+  facet_wrap(~Species, scales = "free_y", ncol = 2) +
+  ggtitle("distribution des effectifs mâles et femelles en fonction des cohorte")
+
+#distribution du SR en fonction des cohortes 
+ggplot(tableau_sp_cohorte_2, aes(x = Cohorte, y = SR)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~Species, ncol = 2) +
+  ggtitle("distribution du sex-ratio en fonction des cohorte")
+#ggsave("SR_cohorte.pdf", width = 10, height = 20) #avec ggsave on peut enregistrer une figure dans le format souhaité (png, pdf, etc. avec les dimensions que l'on veut)
+```
+
+
+on peut calculer avec le tableau_sp_cohorte_2 la moyenne, l'ecart type, le min et le max de chaque sexe pour chaque espèce en fonction des années de cohortes
+```{r}
+###Femelles
+#moyenne des femelles pêchées par cohorte
+tableau_sp_F_moy<- aggregate(Femelles ~ Species, data = tableau_sp_cohorte_2, FUN = mean)
+names(tableau_sp_F_moy)[names(tableau_sp_F_moy) == "Femelles"] <- "moy_F_par_cohorte"
+
+#ecart type des femelles pêchées par cohorte
+tableau_sp_F_sd<- aggregate(Femelles ~ Species, data = tableau_sp_cohorte_2, FUN = sd)
+names(tableau_sp_F_sd)[names(tableau_sp_F_sd) == "Femelles"] <- "sd_F_par_cohorte"
+
+#max des femelles pêchées par cohorte
+tableau_sp_F_max<- aggregate(Femelles ~ Species, data = tableau_sp_cohorte_2, FUN = max)
+names(tableau_sp_F_max)[names(tableau_sp_F_max) == "Femelles"] <- "max_F_par_cohorte"
+
+#min des femelles pêchées par cohorte
+tableau_sp_F_min<- aggregate(Femelles ~ Species, data = tableau_sp_cohorte_2, FUN = min)
+names(tableau_sp_F_min)[names(tableau_sp_F_min) == "Femelles"] <- "min_F_par_cohorte"
+
+table_a <- left_join(tableau_sp_F_moy, tableau_sp_F_sd, by = c("Species"))
+table_b <- left_join(tableau_sp_F_max, tableau_sp_F_min, by = c("Species"))
+table_F <- left_join(table_a, table_b, by = c("Species"))
+
+remove(tableau_sp_F_moy, tableau_sp_F_sd, tableau_sp_F_max, tableau_sp_F_min, table_a, table_b)
+
+### Mâles 
+
+#moyenne des mâles pêchés par cohorte
+tableau_sp_M_moy<- aggregate(Males ~ Species, data = tableau_sp_cohorte_2, FUN = mean)
+names(tableau_sp_M_moy)[names(tableau_sp_M_moy) == "Males"] <- "moy_M_par_cohorte"
+
+
+#ecart type des mâles pêchés par cohorte
+tableau_sp_M_sd<- aggregate(Males ~ Species, data = tableau_sp_cohorte_2, FUN = sd)
+names(tableau_sp_M_sd)[names(tableau_sp_M_sd) == "Males"] <- "sd_M_par_cohorte"
+
+#max des mâles pêchés par cohorte
+tableau_sp_M_max<- aggregate(Males ~ Species, data = tableau_sp_cohorte_2, FUN = max)
+names(tableau_sp_M_max)[names(tableau_sp_M_max) == "Males"] <- "max_M_par_cohorte"
+
+#min des mâles pêchés par cohorte
+tableau_sp_M_min<- aggregate(Males ~ Species, data = tableau_sp_cohorte_2, FUN = min)
+names(tableau_sp_M_min)[names(tableau_sp_M_min) == "Males"] <- "min_M_par_cohorte"
+
+table_c <- left_join(tableau_sp_M_moy, tableau_sp_M_sd, by = c("Species"))
+table_d <- left_join(tableau_sp_M_max, tableau_sp_M_min, by = c("Species"))
+table_M <- left_join(table_c, table_d, by = c("Species"))
+
+remove(tableau_sp_M_moy, tableau_sp_M_sd, tableau_sp_M_max, tableau_sp_M_min, table_c, table_d)
+
+#on joint plusieurs tableau
+
+#table_F et table_M
+table_FM <- left_join(table_F, table_M, by = c("Species"))
+remove(table_F, table_M)
+
+#tableau_sp et table_FM
+names(tableau_sp)[names(tableau_sp) == "Males"] <- "Eff_total_males"
+names(tableau_sp)[names(tableau_sp) == "Femelles"] <- "Eff_total_femelles"
+tableau_sp  <- left_join(tableau_sp, table_FM, by = c("Species"))
+
+remove(table_FM)
+```
+
+calcul du SR moyen par espèce
+```{r}
+SR_moyen_sp <- aggregate(SR ~ Species, data = tableau_sp_cohorte_2, FUN = mean)
+names(SR_moyen_sp)[names(SR_moyen_sp) == "SR"] <- "SR_moyen"
+tableau_sp <- left_join(tableau_sp, SR_moyen_sp, by = "Species")
+remove(SR_moyen_sp)
+
+tableau_sp <- tableau_sp %>% relocate (SR_moyen, .after = SR) #changer des colonnes de place
+```
+
+Figure du SR en fonction des effectifs des echantillons pour chaque espèce
+```{r, fig.height=10, fig.width=10}
+
+ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, y = SR)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~Species, scale = "free_x", ncol = 2) +
+  ggtitle("Distribution du sex ratio en fonction de la taille d'échantillon par espèce") +
+  xlab("taille d'échantillon") + 
+  ylab("Sex-ratio")
+
+```
+
+SR_moyen = moyenne des sex-ratio de chaque année de cohorte par espece
+SR = effectif_total_male/(effectif_total_male + effectif_total_femelle)
+
+
+
+on a les tableaux suivants (les 3 premiers étants les plus importants)
+- *tableau_donnees_filtrees* : tableau "brute" avec premier filtre d'espèces
+- *tableau_sp_cohorte_2* : stats descriptives sur chaque espece par année de cohorte (effectifs, effectifs femelles, effectifs males, SR/sp/cohorte)
+- *tableau_sp* : stats descriptives sur chaque espèce (effectif, effectif mâle, effectif femelle, SR, SR moyen (par année de cohorte), effectifs des mâles et des femelles par sp et par cohorte)
+
+
+
+### A faire
+
+Vérifier la *diversité spatiale et temporelle* dans chaque échantillon pour chaque espèce (diversité d'âge et la diversité des aires dans lesquelles les individus ont été pêché) ==> pour savoir si on a pêché un banc de mâle ou de femelle
+
+Refaire un filtre pour enlever les cohortes (les lignes) pauvres en individus (~ <20 individus par sp par cohorte, donc on aura des trous dans la série temporelle des espèces), ou, calculer une taille d'échantillon optimale pour chaque espèce a partir de laquelle le sex-ratio est fiable
+
+  - Erreur standart du SR calculée chaque année selon n
+  - variance mobile
+
+on veut calculer pour chaque espèce les effectifs à partir desquels on voit une différence au SR de 1:1 :
+Représenter pour chaque espèce la série temporelle du SR puis calculer le long de la série temporelle les différences significatives au sex-ratio de 1:1 et regarder à combien d'individu elle correspond? ==> erreur type du sexe ratio (= SR ~ N et on regarde la variation de l'erreur type de la proportion en fonction de la taille d'échantillon et on garde les échantillons pour lesquelles l'erreur type du SR et faible, ce qui correspond à une certaine taille d'échantillon)
+Couper en dessous d'un nombre minimum d'échantillon
+
+Filtrer par l'âge dans un second temps
+
+
+vérifier qu'il y a une diversité spatiale et temporelle dans les individus d'une espèce qui ont été pêchés lors d'une année
+```{r}
+#tableau espèce year sommes des effectifs pour chaque Area
+tableau_area <- aggregate(CANoAtLngt ~ Species + Year + Area, data = tableau_donnees_filtrees, FUN = sum)
+tableau_area <- tableau_area[order(tableau_area$Species, tableau_area$Year),]
+
+
+#tableau permettant de savoir si le sex ratio est biaisé selon l'aire dans laquelle on pêche
+tableau_area_sex <- aggregate (CANoAtLngt ~ Species + Year + Area + Sex, data = tableau_donnees_filtrees, FUN = sum)
+tableau_area_sex <- tableau_area_sex[order(tableau_area_sex$Year),]
+tableau_area_sex <- tableau_area_sex %>% pivot_wider(names_from = Sex, values_from = CANoAtLngt)
+tableau_area_sex$F[is.na(tableau_area_sex$F)] <- 0
+tableau_area_sex$M[is.na(tableau_area_sex$M)] <- 0
+names(tableau_area_sex)[names(tableau_area_sex) == "F"] <- "Femelles"
+names(tableau_area_sex)[names(tableau_area_sex) == "M"] <- "Males"
+tableau_area_sex <- mutate(tableau_area_sex, SR = Males/(Femelles + Males))
+tableau_year_area_SR <- left_join(tableau_area_sex, tableau_area, by = c("Species", "Year", "Area"))
+remove(tableau_area, tableau_area_sex)
+
+
+#pour savoir le nombre d'aires différentes dans lesquelles les espèces ont été pêchées chaque année
+area <- aggregate (Area ~ Species + Year, data = tableau_year_area_SR, FUN = length)
+#faire un plot
+
+#tableau age
+tableau_age <- aggregate(CANoAtLngt ~ Species + Year + Age , data = tableau_donnees_filtrees, FUN = sum)
+tableau_age <- tableau_age[order(tableau_age$Species, tableau_age$Year),]
+
+
+#tableau_year_sp_SR
+tableau_year_sr <- aggregate(CANoAtLngt ~ Species + Year + Sex, data = tableau_donnees_filtrees, FUN = sum)
+tableau_year_sr <- tableau_year_sr[order(tableau_year_sr$Year),]
+tableau_year_sr <- tableau_year_sr %>%
+  pivot_wider(names_from = Sex, values_from = CANoAtLngt)
+tableau_year_sr$F[is.na(tableau_year_sr$F)] <- 0
+tableau_year_sr$M[is.na(tableau_year_sr$M)] <- 0
+names(tableau_year_sr)[names(tableau_year_sr) == "F"] <- "Femelles"
+names(tableau_year_sr)[names(tableau_year_sr) == "M"] <- "Males"
+tableau_year_sr <- mutate(tableau_year_sr, SR = Males/(Femelles + Males))
+
+
+#tableau year
+tableau_year <- aggregate(CANoAtLngt ~ Species + Year, data = tableau_donnees_filtrees, FUN = sum)
+tableau_year <- tableau_year[order(tableau_year$Year),]
+
+tableau_year_SR <- left_join(tableau_year, tableau_year_sr, by = c("Species", "Year"))
+remove(tableau_year_sr, tableau_year)
+
+tableau_nb_area_sp_year<- left_join(tableau_year_SR, area, by = c("Species", "Year"))
+str(tableau_nb_area_sp_year)
+remove (tableau_year_SR, area)
+```
+
+
+
+Figures des tableaux
+```{r, fig.height=30, fig.width=10}
+#tableau_nb_area_sp_cohorte
+#dans ce tableau : une ligne = une année de cohorte et une espèce et dans la colonne Area on a le nombre d'aires dans les quelles une espèce x a été pêchée l'année n
+
+ggplot(tableau_donnees_filtrees, aes(x = Age, by = Area, fill = Area)) +
+   scale_y_log10() +
+  geom_bar(position = position_dodge(), width=1) +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  ggtitle("Distribution de l'age dans chaque aire de pêche, par espèces") +
+  geom_text(aes(label = after_stat(count)), stat = "count",  position = position_dodge(0.9), vjust=-0.05, hjust = 0, size=2, color = "black") +
+  xlab("année") + 
+  ylab("Age") 
+  
+
+#graphe non gardé
+ggplot(tableau_nb_area_sp_year, aes(x = Year, y = Area)) +
+  geom_point()+
+  geom_line() +
+  facet_wrap(~Species, scale = "free_x", ncol = 2) +
+  ggtitle("Distribution du nombre d'aires dans lesquelles les espèces ont été pêchées par année d'observation") +
+  xlab("Année d'observation") + 
+  ylab("Aire")
+
+
+tableau_nb_area_sp_year$Area <- as.factor(tableau_nb_area_sp_year$Area)
+str(tableau_nb_area_sp_year)
+
+#g3 <- 
+ggplot(tableau_nb_area_sp_year, aes(x = Year, group = Area, color = Area)) +
+  geom_point(aes(y = SR))+
+   geom_line(aes(y = SR))+
+  facet_wrap(~Species, scale = "free", ncol = 2) +
+  ggtitle("Distribution du sex-ratio dans chaque aire de pêche, par espèces et par année") +
+  xlab("Aire") + 
+  ylab("Effectifs")
+#ggsave("g3.pdf", plot = g3, width = 13, height = 25) fonction qui permet d'enregistrer directement une figure dans le repertoire de travail (dans le format qu'on veut)
+
+
+#g4 <- 
+ggplot(tableau_nb_area_sp_year, aes(x = Area, y = CANoAtLngt, group = Area)) +
+  geom_boxplot() +
+  ggtitle("Distribution des effectifs de poisson pêchés dans chaque aire de pêche, par espèces") +
+  xlab("Aires") +
+  ylab("Effectifs") +
+  facet_wrap(~Species, scale = "free_y", ncol = 2)
+#ggsave("g4.pdf", plot = g4, width = 13, height = 25)
+    
+
+tableau_area_longer <- tableau_nb_area_sp_year %>% pivot_longer(c("Femelles", "Males"))  
+names(tableau_area_longer)[names(tableau_area_longer) == "name"] <- "Sex"
+names(tableau_area_longer)[names(tableau_area_longer) == "value"] <- "Eff_Sex"
+tableau_area_longer$Area <- as.factor(tableau_area_longer$Area)
+
+
+#Distribution de SR des espèces dans les aires de pêche est plus informatif
+#g5 <- 
+ggplot(tableau_area_longer, aes(x = Year, shape = Sex, color = Area)) +
+  geom_point(aes(y = Eff_Sex))+
+  geom_line(aes(y = Eff_Sex)) +
+  facet_wrap(~Species, scale = "free", ncol = 2) +
+  ggtitle("Distribution des effectifs mâles et femelles pour chaque espèces pêchées dans les aires de pêche") +
+  xlab("Aire") + 
+  ylab("Effectifs")
+#ggsave("g5.pdf", plot = g5, width = 13, height = 25)
+
+
+#g6 <- 
+ggplot(tableau_age, aes(x = Year, y = Age, group = Year)) +
+  geom_boxplot() +
+  ggtitle("Distribution de l'âge des poisson, par espèce et par année d'observation") +
+  xlab("annees d'observation") +
+  ylab("ages") +
+  facet_wrap(~Species, scale = "free", ncol = 2)
+#on voit sur ce garphe que chez le Hareng ça augmente en fonction du temps et c'est surment lié à l'évolution du protocole d'échantillonnage puisque la campagne a été crée dans les années 60 afin d'échantillonner des larves de hareng (menacé par la pêche). J'ai pas bien compris en lisant le protocole si la campagne SMALK recense des données larvaire ou s'il s'agit d'une autre campagne (ALK, etc.)
+#ggsave("g6.pdf", plot = g6, width = 13, height = 25)
+
+
+#distribution de l'âge par espece, par aire et par année d'observation
+#g7 <- 
+ggplot(tableau_donnees_filtrees, aes(x=Year, y = Age, group = Area, color = Area)) +
+  geom_boxplot() +
+  xlab("Année d'observation") +
+  ylab("Age") +
+   ggtitle("distribution de l'âge par espece, par aire de pêche (et par année d'observation)") +
+  facet_wrap(~Species, scale = "free", ncol = 2)
+#ggsave("g7.pdf", plot = g7, width = 13, height = 25)
+
+```
+Finalement pour ces graphiques, à par le g6, on ne les utilisera pas trop
+
+Graphe présentant l'effectif de chaque espèce pêchées dans les aires de pêches à chaque année (et à chaque cohorte)
+
+*palette de couleur*
+```{r}
+#install.packages('palettetown')
+
+#library(palettetown) # palettetown : nom de ville de départ dans pokemon rouge feu, vert feuille
+#voir les palettes de couleur
+pokedex(cb = 1)
+
+#pokedex(50:60)
+#golbat
+#vaporeon
+#Charizard
+#nidoking
+#wigglytuff
+```
+
+*Année de pêche*
+```{r, fig.height=35, fig.width=10}
+    #tableau_year_area : récapitule le nombre d'individus pêché dans une aire par année d'observation et par espèce
+tableau_year_area_SR$Area <- as.factor(tableau_year_area_SR$Area)
+#en valeur absolue
+#g1<- 
+ggplot(tableau_year_area_SR, aes(x = Year, y = CANoAtLngt, by = Area, fill = Area)) +
+  geom_bar(stat="identity", position = position_stack(), width=1, color = "black") +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  ggtitle("Distribution des effectifs en valeur absolue dans chaque aire de pêche, par espèces et par année d'observation") +
+  #geom_text(aes(label = CANoAtLngt, group = Area), position = position_stack(), vjust = 1, size = 2.5, color = "white")+  #on ne voit rien
+  scale_fill_poke(pokemon = "vaporeon" , spread = 10) +
+  labs(fill = "Aires \nde pêche") +
+  xlab("année") + 
+  ylab("Effectifs") 
+
+
+#en pourcentage
+#déjà on rajoute une colonne pourcentage
+tableau_year_area_SR <- tableau_year_area_SR %>% group_by(Species, Year) %>% mutate(pourcentage_eff = (CANoAtLngt/sum(CANoAtLngt))*100)
+tableau_year_area_SR$pourcent_eff<- round(tableau_year_area_SR$pourcentage_eff, digits=2)
+tableau_year_area_SR <-tableau_year_area_SR %>% select(-pourcentage_eff)
+
+
+#g2<- 
+ggplot(tableau_year_area_SR, aes(x = Year, y = pourcent_eff, by = Area, fill = Area)) +
+  geom_bar(stat = "identity", position = "fill", width= 0.8, color = "black") +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  ggtitle("Distribution des effectifs en pourcentage dans chaque aire de pêche, par espèces et par année d'observation") +
+  #geom_text(aes(label = pourcent_eff), stat = "identity",  position = position_fill(.5), size = 2.5, color = "black") +  #facultatif sinon on ne voit rien
+  scale_fill_poke(pokemon = "vaporeon" , spread = 10) + 
+  labs(fill = "Aires \nde pêche") +
+  xlab("année") + 
+  ylab("Pourcentage d'effectif") +
+  scale_y_continuous(labels = scales::percent)
+
+
+#g3 <- g1 + g2 + plot_annotation(title = "Distribution des effectifs (en valeur absolue à gauche, en pourcentage à droite) dans chaque aire de pêche, \npar espèces et par année d'observation") 
+#ggsave("eff_year.pdf", plot = g3, width = 10, height = 25)
+```
+
+Pour savoir si la nouvelle colonne pourcentage marche :
+Pour Culpea harengus 1966 : 
+      Aire    effectifs   %
+        2       253       13.65353
+        4       398       21.47868
+        6       726       39.17971
+        7       476       25.68807
+      
+total 4         1853      99.99999
+
+
+*Cohorte*
+On fait un tableau qui filtre en fonction de l'espèce, de la cohorte et de l'aire (même tableau que tableau_year_area_SR mais version cohorte : contient l'effectif de chaque aire de pêche pour chaque espèce à chaque cohorte)
+```{r, fig.height=35, fig.width=9}
+#tableau espèce cohorte sommes des effectifs pour chaque Area
+df_cohorte <- aggregate(CANoAtLngt ~ Species + Cohorte + Area, data = tableau_donnees_filtrees, FUN = sum)
+df_cohorte <- df_cohorte[order(df_cohorte$Species, df_cohorte$Cohorte),]
+
+#tableau permettant de savoir si le sex ratio est biaisé selon l'aire dans laquelle on pêche
+df_cohorte_area_sex <- aggregate (CANoAtLngt ~ Species + Cohorte + Area + Sex, data = tableau_donnees_filtrees, FUN = sum)
+df_cohorte_area_sex <- df_cohorte_area_sex[order(df_cohorte_area_sex$Cohorte),]
+df_cohorte_area_sex <- df_cohorte_area_sex %>% pivot_wider(names_from = Sex, values_from = CANoAtLngt)
+df_cohorte_area_sex$F[is.na(df_cohorte_area_sex$F)] <- 0
+df_cohorte_area_sex$M[is.na(df_cohorte_area_sex$M)] <- 0
+names(df_cohorte_area_sex)[names(df_cohorte_area_sex) == "F"] <- "Femelles"
+names(df_cohorte_area_sex)[names(df_cohorte_area_sex) == "M"] <- "Males"
+df_cohorte_area_sex <- mutate(df_cohorte_area_sex, SR = Males/(Femelles + Males))
+tableau_cohorte_area_SR <- left_join(df_cohorte_area_sex, df_cohorte, by = c("Species", "Cohorte", "Area"))
+remove(df_cohorte_area_sex, df_cohorte)
+
+#colonne pourcentage
+tableau_cohorte_area_SR <- tableau_cohorte_area_SR %>% group_by(Species, Cohorte) %>% mutate(pourcentage_eff = (CANoAtLngt/sum(CANoAtLngt))*100)
+tableau_cohorte_area_SR$pourcent_eff<- round(tableau_cohorte_area_SR$pourcentage_eff, digits=2)
+tableau_cohorte_area_SR <-tableau_cohorte_area_SR %>% select(-pourcentage_eff)
+
+#en valeur absolue
+#g4<- 
+ggplot(tableau_cohorte_area_SR, aes(x = Cohorte, y = CANoAtLngt, by = Area, fill = as.factor(Area))) +
+  geom_bar(stat="identity", position = position_stack(), width=1, color = "black") + #, show.legend = FALSE
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  ggtitle("Distribution des effectifs en valeur absolue dans chaque aire de pêche, par espèces et par cohorte") +
+  #geom_text(aes(label = CANoAtLngt), stat = "identity", position = position_stack(.5), size = 2, color = "black")+  #on ne voit rien
+  scale_fill_poke(pokemon = "wigglytuff" , spread = 10) +
+  labs(fill = "Aires \nde pêche") +
+  xlab("Cohortes") + 
+  ylab("Effectifs") 
+
+#En pourcentage
+#g5 <- 
+ggplot(tableau_cohorte_area_SR, aes(x = Cohorte, y = pourcent_eff, by = Area, fill = as.factor(Area))) +
+  geom_bar(stat = "identity", position = "fill", width= 0.8, color = "black") +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  ggtitle("Distribution des effectifs en pourcentage dans chaque aire de pêche, par espèces et par Cohorte") +
+  #geom_text(aes(label = pourcent_eff), stat = "identity",  position = position_fill(.5), size = 2, color = "black") +  #facultatif sinon on ne voit rien
+  scale_fill_poke(pokemon = "wigglytuff" , spread = 10) + 
+  labs(fill = "Aires \nde pêche") +
+  xlab("Cohorte") + 
+  ylab("Pourcentage d'effectif") +
+  scale_y_continuous(labels = scales::percent)
+
+#g6 <- g4 + g5 + plot_annotation(title = "Distribution des effectifs (en valeur absolue à gauche, en pourcentage à droite) dans chaque aire de pêche, \npar espèces et par cohorte") 
+#ggsave("eff_cohorte.pdf", plot = g6, width = 10, height = 25)
+
+```
+
+
+**Calcul de la taille optimal d'échantillon des espèces permettant d'avoir un SR fiable**
+
+*Erreur type*
+erreur type d'une proportion : sqrt(p*(1-p))/n) (sous hp que p suit une loi normale)
+avec p la proportion de l'échantillon et n la taille de l'échantillon 
+```{r, fig.height=10, fig.width=10}
+#on créer une colonne qui va contenir pour chaque espèce à chaque cohorte l'erreur type de proportion dans le tableau_sp_cohorte_2
+
+tableau_sp_cohorte_2 <- mutate(tableau_sp_cohorte_2, erreur_type_proportion_SR = sqrt((SR*(1-SR))/Effectifs))
+
+ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, y = erreur_type_proportion_SR)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~Species, scale = "free", ncol = 2) +
+  ggtitle("Distribution de l'erreur type du SR en fonction de la taille d'échantillon par espèce") +
+  xlab("taille d'échantillon") + 
+  ylab("Erreur type")
+
+```
+
+# Figure du Lieu noir (présente dans le rapport et dans le diapo de la soutenance)
+```{r, fig.height= 10; fig.width = 6}
+table_lieu <- filter(tableau_sp_cohorte_2, Species == "Pollachius virens")
+table_lieu <- table_lieu[-which(table_lieu$SR == 0 | table_lieu$SR == 1),]
+
+p1 <- ggplot(table_lieu, aes(x = Effectifs, y = erreur_type_proportion_SR)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  #ggtitle("Distribution de l'erreur type du SR en fonction de la taille d'échantillon par espèce") +
+  xlab("Taille d'échantillon") + 
+  ylab("Erreur type du sexe ratio") +
+  theme_bw()
+
+p2 <-ggplot(table_lieu, aes(x = Effectifs, y = SR)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~Species, scale = "free_x", ncol = 1) +
+  #ggtitle("Distribution du sex ratio en fonction de la taille d'échantillon par espèce") +
+  xlab("Taille d'échantillon") + 
+  ylab("Sex-ratio") +
+  theme_bw()
+
+p3 <- p2 + p1
+#ggsave("plot_lieu_et_sr_n.png", width = 12, height = 4)
+p3
+remove(p1, p2, p3, table_lieu)
+```
+
+
+distribution du SR
+```{r, fig.height=15, fig.width=15}
+hist(tableau_sp_cohorte_2$SR)
+
+tapply(tableau_sp_cohorte_2$SR, tableau_sp_cohorte_2$Species ,shapiro.test)
+
+ggplot(tableau_sp_cohorte_2, aes(x = SR)) +
+  geom_histogram() +
+  facet_wrap(~Species, scales = "free_y", ncol = 4)
+```
+
+
+
+*Calcul test de puissance pour des proportion* finalement on ne s'est pas occupé des résultats des tests de puissance pour des proportions
+
+
+https://fr.linkedin.com/learning/r-les-statistiques-parametriques/calculer-la-taille-d-un-echantillon-de-test-p
+https://cran.r-project.org/web/packages/pwr/vignettes/pwr-vignette.html
+https://rdrr.io/cran/pwr/man/pwr.p.test.html
+
+https://machinelearningmastery.com/statistical-power-and-power-analysis-in-python/
+https://www.r-bloggers.com/2021/05/power-analysis-in-statistics-with-r/
+
+
+on cherche la taille de l'échantillon qui nous permet de rejeter avec une plus grande probabilité (0.90) l'hypothèse H0 (qui est que le SR est de 0.50) si la proportion est une autre valeur (contenue dans le vecteur proportion SR)
+(donc on cherche à minimiser le risque beta)
+
+on aura 
+  sig.level = probabilité d'erreur de type I (niveau de significativité)
+  power = puissance du test (probabilité minimale d'erreur de type 2) 
+  alternative = si on fait un test unilatérale ou pas
+```{r}
+library(pwr)
+proportions_SR_1 <- seq(0.05,0.45, 0.05)
+proportion_SR_2 <- seq (0.55, 1, 0.05)
+proportion_SR <-c(proportions_SR_1, proportion_SR_2)
+remove(proportions_SR_1, proportion_SR_2)
+p_h0 <- 0.5
+
+function_puissance <- function(vecteur){
+  vecteur_taille<-c()
+  for (p in 1 : length(vecteur)) {
+    taille <- pwr.p.test(h = ES.h(vecteur[p], p_h0), #h donne la taille de l'effet avec p1 (ici vecteur[p]) : la probabilité d'un groupe et p2: ici p_h0, la probabilité attendue sous h0
+                         sig.level = 0.05 , #marge d'erreur
+                         power = 0.90 , #power
+                         alternative = "two.sided")#greater lower ou two.sided
+    vecteur_taille <- c(vecteur_taille, taille$n)
+    
+  }
+   return(vecteur_taille)
+}
+
+
+ 
+Size <-function_puissance(vecteur = proportion_SR)
+tableau_puissance<- data.frame(proportion_SR, Size)
+```
+
+avec power.prop.test
+power.prop.test(p1 = 0.50, p2 = 0.45, power = 0.90, sig.level = 0.05)
+permet de calculer la taille d'échantillon nécessaire dans chacun des groupes pour voire une différence significative entre les deux proportions
+(mais c'est théorique)
+
+
+*moving variance*
+
+#La fonction roll apply cherche toute seule la colonne pour laquelle il y a des dates dans le tableau, donc il faut changer le format de la colonne effectif en format POSIXct
+https://www.r-bloggers.com/2017/07/tidy-time-series-analysis-part-2-rolling-functions/
+
+```{r, fig.height=10, fig.width=15}
+library(zoo)
+library(tidyquant)
+library(lubridate)
+
+tableau_rollvar <- data.frame()
+for (espece in unique(tableau_sp_cohorte_2$Species)){
+  df <- filter(tableau_sp_cohorte_2, tableau_sp_cohorte_2$Species == espece)
+  df <- df[order(df$Effectifs),]#on trie par les effectifs
+  df$eff_date <- as.Date(df$Effectifs)#on change les effectifs en date
+  df_rollvar <- df %>% tq_mutate( #cette partie du code je l'ai trouvé sur le site internet
+        # tq_mutate args
+        select     = SR,
+        mutate_fun = rollapply,
+        # rollapply args
+        width      = 10,
+        align      = "right",
+        FUN        = var,
+        # mean args
+        na.rm      = TRUE,
+        # tq_mutate args
+        col_rename = "roll_var"
+    )
+  tableau_rollvar <- rbind(tableau_rollvar, df_rollvar)
+}
+remove(df, df_rollvar, tableau_sp_cohorte_2) #le tableau rollvar est le même que le tableau_sp_cohorte_2 avec deux colonnes en plus et trié en fonction des effectifs au lieu des cohortes 
+tableau_rollvar <- tableau_rollvar[order(tableau_rollvar$Cohorte),]
+tableau_sp_cohorte_2 <- tableau_rollvar %>% subset(select = -c(eff_date))
+remove(tableau_rollvar)
+
+############# 
+ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, y = roll_var)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ Species, scales = "free", ncol = 4) +
+  ggtitle("variance mobile du sex-ratio de chaque espèce en fonction de la taille des cohortes")
+  
+
+ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, y = SR)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ Species, scales = "free", ncol = 4) +
+  ggtitle("Distribution du sex ratio des espèces en fonction de la taille des cohortes")
+#Dernier ggplot dans le tableau rollvar... pas forcément très pertinant
+```
+
+Test des commandes spécifiquement sur certaines variables (espèce du Rouget, année 2015...)
+```{r}
+#pour calculer une variance mobile
+tableau_Rouget<- tableau_sp_cohorte_2 %>% filter(Species == "Mullus surmuletus")
+tableau_Rouget <- tableau_Rouget[order(tableau_Rouget$Effectifs),]
+tableau_Rouget$eff_date <- as.Date(tableau_Rouget$Effectifs)
+tableau_Rouget <- tableau_Rouget %>% tq_mutate(
+        # tq_mutate args
+        select     = SR,
+        mutate_fun = rollapply,
+        # rollapply args
+        width      = 10,
+        align      = "right",
+        FUN        = var,
+        # mean args
+        na.rm      = TRUE,
+        # tq_mutate args
+        col_rename = "roll_var"
+    )
+sum(duplicated(tableau_Rouget$eff_date))
+
+
+#pour regarder les aires dans lesquelles l'epèce a été pêchée 
+class(tableau_donnees_filtrees$Area)#"integer"
+tableau_donnees_filtrees$Area <- as.factor(tableau_donnees_filtrees$Area)
+levels(tableau_donnees_filtrees$Area)
+length(levels(tableau_donnees_filtrees$Area))
+summary(tableau_donnees_filtrees$Area)
+
+test_Rouget<- tableau_donnees_filtrees %>% filter(Species == "Mullus surmuletus")
+test_Rouget2 <- test_Rouget %>% filter(Year == 2015)
+summary(test_Rouget2$Area)#le problème c'est qu'il continue à m'afficher les niveaux de facteurs du tableau de données filtrées même s'il y a 0 lignes qui remplissent ces conditions
+
+length(summary(tableau_donnees_filtrees$Area[which(tableau_donnees_filtrees$Species == "Mullus surmuletus" || tableau_donnees_filtrees$Year == "2015")]))#il m'affiche 10 alors qu'il y a 4 aires différentes dans lesquelles cette espèce a été pêchée en 2015
+
+#c'est aussi un problème rencontré plus haut lorsque je lui ai demandé de faire un test de shapiro sur les distributions du SR des espèces du tableau de données filtrées, il m'a inclut toutes les espèces du données brute... R doit garder toutes les modalités des facteurs en réserve...
+(remove(test_Rouget, test_Rouget2, tableau_Rouget))
+```
+essayer dataframe <- drop.levels(dataframe)
+
+```{r, fig.height=35, fig.width=15}
+#library(viridis)
+
+#figure variance mobile
+#variance mobile du sex-ratio de chaque espèce en fonction de la taille des cohortes
+var_mobile <- ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, group = Species)) +
+  geom_line(aes(y = roll_var)) +
+  geom_point(aes(y = roll_var, color = Species), show.legend = FALSE) +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  facet_wrap(~ Species, scales = "free", ncol = 1) +
+  xlab("taille d'échantillon") + 
+  ylab("variance mobile du sex-ratio") +
+  theme_bw()
+  
+#figure de l'erreur type
+#Distribution de l'erreur type du SR en fonction de la taille d'échantillon par espèce
+Erreur_type <- ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, group = Species)) +
+  geom_point(aes(y = erreur_type_proportion_SR, color = Species), show.legend = FALSE) +
+  geom_line(aes(y = erreur_type_proportion_SR)) +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  xlab("taille d'échantillon") + 
+  ylab("Erreur type")+
+  theme_bw()
+
+
+#SR en fonction de la taille
+#Distribution du sex ratio en fonction de la taille d'échantillon par espèce
+SR_n <- ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, group = Species)) +
+  geom_point(aes(y = SR, color = Species), show.legend = FALSE) +
+  geom_line(aes(y = SR)) +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  facet_wrap(~Species, scale = "free_x", ncol = 1) +
+  xlab("taille d'échantillon") + 
+  ylab("Sex-ratio")+
+  theme_bw()
+
+
+plot_taille_ech <- SR_n + var_mobile + Erreur_type + plot_annotation(title = "De gauche à droite : le Sex-ratio, la vairance mobile du sex-ratio et l'erreur type en fonction de la taille d'échantillon") 
+#ggsave("taille_ech.pdf", plot = plot_taille_ech, width = 13, height = 35)
+
+#c'est en parti à partir de ce graphe que l'on a déterminer la procédure de sélection a priori à suivre
+plot_taille_ech
+
+remove(plot_taille_ech, SR_n, Erreur_type, plot_taille_ech, var_mobile)
+```
+
+
+
+Chercher la taille d'échantillon permettant de rejeter avec une plus grande probabilité l'hypothèse H0 (le SR est de 0.50) si le SR moyen des espèces est une autre valeur
+On a créé plus haut la *fonction_puissance* et on va la réutiliser
+
+function_puissance <- function(vecteur){
+  vecteur_taille<-c()
+  for (p in 1 : length(vecteur)) {
+    taille <- pwr.p.test(h = ES.h(vecteur[p], p_h0), 
+                         sig.level = 0.05 , 
+                         power = 0.90 , 
+                         alternative = "two.sided")
+    vecteur_taille <- c(vecteur_taille, taille$n)
+    
+  }
+   return(vecteur_taille)
+}
+
+```{r}
+#Le sex-ratio moyen par cohorte de chaque espèce est contenu dans la colonne SR_moyen du tableau_sp2
+library(pwr)
+Size <-function_puissance(vecteur = tableau_sp$SR_moyen)
+tableau_sp$Size_power <- Size
+tableau_sp$Size_power<-mapply(round, tableau_sp$Size_power, 2)
+tableau_sp <- tableau_sp %>% relocate(Size_power, .after = Eff_moy_par_cohorte)
+tableau_sp <- tableau_sp %>% relocate(SR_moyen, .after = Size_power)
+
+
+#le Sex-ratio par cohorte et par espèce qui est contenu dans la colonne du tableau_sp_cohorte_2
+#la fonction de puissance ne marche pas lorsque h1 = h0
+b<-tableau_sp_cohorte_2[which(tableau_sp_cohorte_2$SR == 0.5000000),] # b un data frame qui donne les lignes pour lesquelles le SR est parfaitement équilibré par espèce et par cohorte
+a<-tableau_sp_cohorte_2[which(tableau_sp_cohorte_2$SR == 0.0000),] # a un dataframe qui donne les lignes pour lesquelles le SR est nul par espèce et par cohorte
+df <- filter(tableau_sp_cohorte_2, SR != 0.5000000)
+#normalement on devrais pouvoir appliquer la fonction_puissance sur les valeurs de SR du tableau df
+
+Size_power <-function_puissance(vecteur = df$SR)
+df2 <- cbind(df, Size_power)
+
+
+tableau_sp_cohorte_2 <- left_join(tableau_sp_cohorte_2, df2, all.x = TRUE, by = c("Species", "Cohorte", "Effectifs", "Moyenne_CANoAtLngt", "Ecart_type_CANoAtLngt", "Min_CANoAtLngt", "Max_CANoAtLngt", "Femelles", "Males", "SR", "erreur_type_proportion_SR", "roll_var"))
+
+
+#normalement on devrait avoir autant de Na dans la colonne Size que de nb de lignes dans le tableau b
+sum(is.na(tableau_sp_cohorte_2$Size_power))
+tableau_sp_cohorte_2 <- tableau_sp_cohorte_2 %>% relocate(SR, .after = Effectifs)
+tableau_sp_cohorte_2 <- tableau_sp_cohorte_2 %>% relocate(Size_power, .after = Effectifs)
+tableau_sp_cohorte_2$Size_power <- mapply(round, tableau_sp_cohorte_2$Size_power, 1)
+
+
+remove(a, b, df, df2)
+```
+
+Distribution des tailles d'échantillons observées et optimales (permettant de minimiser le risque beta selon le test de puissance) en fonction de la distribution du sex-ratio
+```{r, fig.height=20, fig.width=8}
+ggplot(tableau_sp_cohorte_2, aes(x = SR, group = Species)) +
+  geom_point(aes(y = Effectifs, color = Species)) +
+  geom_line(aes(y = Effectifs)) +
+  geom_point(aes(y = Size_power, color = "red")) +
+  geom_line(aes(y = Size_power, color = "red")) +
+  scale_y_log10() +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  facet_wrap(~Species, scale = "free_y", ncol = 1) +
+  xlab("Sex-ratio") + 
+  ylab("taille d'échantillon")+
+  ggtitle("Distribution des tailles d'échantillons observées et optimales \n(selon le test de puissance) en fonction de la distribution du sex-ratio") +
+  theme_bw()
+#ggsave("taille_ech_optimale_obs.pdf", width = 8, height = 20)
+```
+Distribution des tailles d'échantillons moyennes (par espèce et par cohortes) observées et optimales (calculée grâce à un test de puissance) en fonction de la distribution du sex-ratio moyen (par espèce et par cohorte)
+```{r, fig.height=7, fig.width=8}
+tableau_sp$Eff_moy_par_cohorte <- round(tableau_sp$Eff_moy_par_cohorte, digits = 0)
+tableau_sp$Size_power <- round(tableau_sp$Size_power, digits = 0)
+
+ggplot(tableau_sp, aes(x = SR_moyen, y = Eff_moy_par_cohorte, group = Species)) +
+  geom_bar(aes(fill = Species), stat="identity", width = 0.003) +
+  geom_point(aes(y = Size_power, color = "red")) +
+  geom_line(aes(y = Size_power, ,  color = "red", size=2)) +
+  geom_text(aes(label = Eff_moy_par_cohorte), stat = "identity", vjust = -1 , size = 2, color = "black")+
+  scale_y_log10() +
+  geom_text(aes(label = Size_power), vjust = -2.5 , size = 2, color = "red")+
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  xlab("Sex-ratio moyen") + 
+  ylab("tailles d'échantillon")+
+  theme_bw() +
+  ggtitle("Distribution des moyennes de tailles d'échantillons observées et optimales \n(selon le test de puissance) en fonction de la distribution du sex-ratio moyen, par espèce")
+#ggsave("Moyenne_taille_ech_optimale_obs.pdf", width = 8, height = 8)
+```
+
+Pour chaque espèce on regarde la taille d'échantillon qui est associée à une erreur type de 0.05, 0.1, 0.20 et 0.25 et on voit si on coupe en dessous de cette taille d'échantillon
+
+Pour la variance mobile, j'ai pris une fenêtre de 10...
+```{r, fig.height=30, fig.width=5}
+#figure variance mobile du sex-ratio de chaque espèce en fonction de la taille des cohortes
+ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, group = Species)) +
+  geom_line(aes(y = roll_var)) +
+  geom_point(aes(y = roll_var, color = Species), show.legend = FALSE) +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  facet_wrap(~ Species, scales = "free", ncol = 1) +
+  xlab("taille d'échantillon") + 
+  ylab("variance mobile du sex-ratio") +
+  theme_bw()
+  
+#figure de l'erreur type du SR en fonction de la taille d'échantillon par espèce
+ggplot(tableau_sp_cohorte_2, aes(x = Effectifs, group = Species)) +
+  geom_point(aes(y = erreur_type_proportion_SR, color = Species), show.legend = FALSE) +
+  geom_line(aes(y = erreur_type_proportion_SR)) +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  xlab("taille d'échantillon") + 
+  ylab("Erreur type")+
+  theme_bw()
+
+```
+
+tableau_sp_cohorte_2
+tableau_rollvar
+on va regarder dans ces tableaux à quel effectifs correspond our chaque espèce une erreur type de 0.05, 0.10, 0.20 et 0.25, s'il y a des différences d'effectifs pour chaque espèce et si il y a des différence d'effectifs avec la variance mobile.
+
+
+```{r, fig.height=6, fig.width=7}
+####0.25
+test_025 <- tableau_sp_cohorte_2[-which(tableau_sp_cohorte_2$erreur_type_proportion_SR > 0.25), ] #on garde que les lignes pour lesquelles l'erreur type du sexe ratio est inférieur ou égale à 0.25
+test_025 <- test_025[-which(test_025$erreur_type_proportion_SR == 0.00), ]
+max(test_025$erreur_type_proportion_SR)
+
+test_025_1 <- aggregate(erreur_type_proportion_SR ~ Species, data = test_025, FUN = max)
+
+df_025 <- data.frame()
+for(sp in unique(test_025$Species)){
+  df <- filter(test_025, Species == sp)
+  df1 <- df[which(df$erreur_type_proportion_SR == max(df$erreur_type_proportion_SR)), ]
+  df_025 <- rbind(df1, df_025)
+}
+
+
+####0.20
+test_020 <- tableau_sp_cohorte_2[-which(tableau_sp_cohorte_2$erreur_type_proportion_SR > 0.20), ]
+test_020 <- test_020[-which(test_020$erreur_type_proportion_SR == 0.00), ]
+max(test_020$erreur_type_proportion_SR)
+
+df_020 <- data.frame()
+for(sp in unique(test_020$Species)){
+  df <- filter(test_020, Species == sp)
+  df1 <- df[which(df$erreur_type_proportion_SR == max(df$erreur_type_proportion_SR)), ]
+  df_020 <- rbind(df1, df_020)
+}
+
+####0.15
+test_015 <- tableau_sp_cohorte_2[-which(tableau_sp_cohorte_2$erreur_type_proportion_SR > 0.15), ]
+test_015 <- test_015[-which(test_015$erreur_type_proportion_SR == 0.00), ]
+max(test_015$erreur_type_proportion_SR)
+
+df_015 <- data.frame()
+for(sp in unique(test_015$Species)){
+  df <- filter(test_015, Species == sp)
+  df1 <- df[which(df$erreur_type_proportion_SR == max(df$erreur_type_proportion_SR)), ]
+  df_015 <- rbind(df1, df_015)
+}
+
+####0.10
+test_010 <- tableau_sp_cohorte_2[-which(tableau_sp_cohorte_2$erreur_type_proportion_SR > 0.10), ]
+test_010 <- test_010[-which(test_010$erreur_type_proportion_SR == 0.00), ]
+max(test_010$erreur_type_proportion_SR)
+
+df_010 <- data.frame()
+for(sp in unique(test_010$Species)){
+  df <- filter(test_010, Species == sp)
+  df1 <- df[which(df$erreur_type_proportion_SR == max(df$erreur_type_proportion_SR)), ]
+  df_010 <- rbind(df1, df_010)
+}
+
+####0.05
+test_005 <- tableau_sp_cohorte_2[-which(tableau_sp_cohorte_2$erreur_type_proportion_SR > 0.05), ]
+test_005 <- test_005[-which(test_005$erreur_type_proportion_SR == 0.00), ]
+max(test_005$erreur_type_proportion_SR)
+
+df_005 <- data.frame()
+for(sp in unique(test_005$Species)){
+  df <- filter(test_005, Species == sp)
+  df1 <- df[which(df$erreur_type_proportion_SR == max(df$erreur_type_proportion_SR)), ]
+  df_005 <- rbind(df1, df_005)
+}
+
+
+#on va fusionner ces tableaux
+
+#df_025
+df_025 <- subset(df_025, select = c("Species", "Cohorte", "Effectifs", "SR", "erreur_type_proportion_SR"))
+names(df_025)[names(df_025) == "Cohorte"] <- "Cohorte_025"
+names(df_025)[names(df_025) == "Effectifs"] <- "Effectifs_025"
+names(df_025)[names(df_025) == "SR"] <- "SR_025"
+names(df_025)[names(df_025) == "erreur_type_proportion_SR"] <- "etp_025" #et pour "erreur type de la proportion"
+
+#df_020
+df_020 <- subset(df_020, select = c("Species", "Cohorte", "Effectifs", "SR", "erreur_type_proportion_SR"))
+names(df_020)[names(df_020) == "Cohorte"] <- "Cohorte_020"
+names(df_020)[names(df_020) == "Effectifs"] <- "Effectifs_020"
+names(df_020)[names(df_020) == "SR"] <- "SR_020"
+names(df_020)[names(df_020) == "erreur_type_proportion_SR"] <- "etp_020"
+
+#df_015
+df_015 <- subset(df_015, select = c("Species", "Cohorte", "Effectifs", "SR", "erreur_type_proportion_SR"))
+names(df_015)[names(df_015) == "Cohorte"] <- "Cohorte_015"
+names(df_015)[names(df_015) == "Effectifs"] <- "Effectifs_015"
+names(df_015)[names(df_015) == "SR"] <- "SR_015"
+names(df_015)[names(df_015) == "erreur_type_proportion_SR"] <- "etp_015"
+
+#df_010
+df_010 <- subset(df_010, select = c("Species", "Cohorte", "Effectifs", "SR", "erreur_type_proportion_SR"))
+names(df_010)[names(df_010) == "Cohorte"] <- "Cohorte_010"
+names(df_010)[names(df_010) == "Effectifs"] <- "Effectifs_010"
+names(df_010)[names(df_010) == "SR"] <- "SR_010"
+names(df_010)[names(df_010) == "erreur_type_proportion_SR"] <- "etp_010"
+
+#df_005
+df_005 <- subset(df_005, select = c("Species", "Cohorte", "Effectifs", "SR", "erreur_type_proportion_SR"))
+names(df_005)[names(df_005) == "Cohorte"] <- "Cohorte_005"
+names(df_005)[names(df_005) == "Effectifs"] <- "Effectifs_005"
+names(df_005)[names(df_005) == "SR"] <- "SR_005"
+names(df_005)[names(df_005) == "erreur_type_proportion_SR"] <- "etp_005"
+
+a <- left_join(df_025, df_020, by = "Species")
+b <- left_join(df_015, df_010, by = "Species")
+c <- left_join(a, b, by = "Species")
+tableau_etp <- left_join(c, df_005, by = "Species")
+
+test_010$erreur_type_proportion_SR
+min(test_010[which(test_010$Species == "Eutrigla gurnardus"), "erreur_type_proportion_SR"])
+max(tableau_sp_cohorte_2[which(tableau_sp_cohorte_2$Species == "Melanogrammus aeglefinus
+"), "erreur_type_proportion_SR"])
+
+tableau_etp[,c(5, 9, 13, 17, 21)] <- round(tableau_etp[,c(5, 9, 13, 17, 21)], digits=3)
+
+remove(a, b, c, df_005, df_010, df_015, df_020, df_025, df, df1, test_025_1)
+
+##graphique
+#025
+ggplot(data = tableau_etp, aes(x = Species, y = Effectifs_025, group = Species)) +
+  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = etp_025), stat = "identity", vjust = -0.7 , size = 2, color = "black") +
+  geom_text(aes(label = Effectifs_025), stat = "identity" , size = 2, position = position_fill(0.9), color = "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1)) +
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  xlab("Espèces") + 
+  ylab("tailles d'échantillon")+
+  ggtitle("taille d'échantillon correspondant à une erreur type maximale de 0.25")
+#ggsave("taille_echantillon_etp_025.pdf", width = 7, height = 6)
+
+#020
+ggplot(data = tableau_etp, aes(x = Species, y = Effectifs_020, group = Species)) +
+  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = etp_020), stat = "identity", vjust = -0.7 , size = 2, color = "black") +
+  geom_text(aes(label = Effectifs_020), stat = "identity" , size = 2, position = position_fill(0.9), color = "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1)) +
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  xlab("Espèces") + 
+  ylab("tailles d'échantillon")+
+  ggtitle("taille d'échantillon correspondant à une erreur type maximale de 0.20")
+#ggsave("taille_echantillon_etp_020.pdf", width = 7, height = 6)
+
+#015
+ggplot(data = tableau_etp, aes(x = Species, y = Effectifs_015, group = Species)) +
+  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = etp_015), stat = "identity", vjust = -0.7 , size = 2, color = "black") +
+  geom_text(aes(label = Effectifs_015), stat = "identity" , size = 2, position = position_fill(0.9), color = "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1)) +
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  xlab("Espèces") + 
+  ylab("tailles d'échantillon")+
+  ggtitle("taille d'échantillon correspondant à une erreur type maximale de 0.15")
+#ggsave("taille_echantillon_etp_015.pdf", width = 7, height = 6)
+
+#010
+ggplot(data = tableau_etp, aes(x = Species, y = Effectifs_010, group = Species)) +
+  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = etp_010), stat = "identity", vjust = -0.7 , size = 2, color = "black") +
+  geom_text(aes(label = Effectifs_010), stat = "identity" , size = 2, position = position_fill(0.9), color = "red") +
+  theme(axis.text.x = element_text(angle=45, hjust = 1)) +
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  xlab("Espèces") + 
+  ylab("tailles d'échantillon")+
+  ggtitle("taille d'échantillon correspondant à une erreur type maximale de 0.10")
+#ggsave("taille_echantillon_etp_010.pdf", width = 7, height = 6)
+
+
+
+#005
+ggplot(data = tableau_etp, aes(x = Species, y = Effectifs_005, group = Species)) +
+  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE) + 
+  theme(axis.text.x = element_text(angle= 45, hjust = 1)) +
+  geom_text(aes(label = etp_005), stat = "identity", vjust = -0.7 , size = 2, color = "black")+
+  geom_text(aes(label = Effectifs_005), stat = "identity" , size = 2, position = position_fill(0.9), color = "red") +
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+   xlab("Espèces") + 
+  ylab("tailles d'échantillon")+
+  ggtitle("taille d'échantillon correspondant à une erreur type maximale de 0.05")
+#ggsave("taille_echantillon_etp_005.pdf", width = 7, height = 6)
+```
+
+
+Dans les tableaux test (_005, _010, _015, _020, _025) on a enlevé les lignes pour lesquelles l'erreur types était supérieure à 0.25 (par exemple) et on a aussi enlevé les lignes pour lesquelles l'erreur type était exactement de de 0.000, ce qui signifiait qu'il n'y avait qu'un seul individu pour une espèce à une cohorte
+
+on va représenter dans un graphique le SR en fonction des cohortes ainsi que l'effectif en fonction des cohortes 
+```{r, fig.height=25, fig.width=13}
+#015
+ggplot(test_015, aes(x=Cohorte, y=SR, group = Species)) +
+  geom_point(aes(color = Species), show.legend = FALSE) +
+  geom_line(aes(color = Species), size=0.7, show.legend = FALSE) +
+  facet_wrap(~Species, ncol = 1, scales = "free_x") +
+  labs(y = "Sex-ratio", x = "Cohorte") +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  theme_bw()  +
+  #geom_text(aes(label = Effectifs), stat = "identity", size = 2, nudge_y = 0.1) +
+
+ggplot(test_015, aes(x=Cohorte, y=Effectifs, group = Species)) +
+  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE, color = "Black") +
+  facet_wrap(~Species, ncol = 1, scales = "free") +
+  labs(y = "Effectifs", x = "Cohorte") +
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  theme_bw()  +
+  geom_text(aes(label = Effectifs), stat = "identity", size = 1.7, vjust= -0.25, color = "black") + plot_annotation(title = "Distribution du sexe ratio (à gauche) et des effectifs (à droite) en fonction des cohortes (après filtrage d'erreur types supérieur à 0.15)") 
+
+#ggsave("SR_eff_etp_015.pdf", width = 12, height = 25)
+
+#010
+ggplot(test_010, aes(x=Cohorte, y=SR, group = Species)) +
+  geom_point(aes(color = Species), show.legend = FALSE) +
+  geom_line(aes(color = Species), size=0.7, show.legend = FALSE) +
+  facet_wrap(~Species, ncol = 1, scales = "free_x") +
+  labs(y = "Sex-ratio", x = "Cohorte") +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  theme_bw()  +
+
+ggplot(test_010, aes(x=Cohorte, y=Effectifs, group = Species)) +
+  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE, color = "Black") +
+  facet_wrap(~Species, ncol = 1, scales = "free") +
+  labs(y = "Effectifs", x = "Cohorte") +
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  theme_bw()  +
+  geom_text(aes(label = Effectifs), stat = "identity", size = 1.7, vjust= -0.25, color = "black") + plot_annotation(title = "Distribution du sexe ratio (à gauche) et des effectifs (à droite) en fonction des cohortes (après filtrage d'erreur types supérieur à 0.10)") 
+
+#ggsave("SR_eff_etp_010.pdf", width = 12, height = 25)
+
+#0.05
+ggplot(test_005, aes(x=Cohorte, y=SR, group = Species)) +
+  geom_point(aes(color = Species), show.legend = FALSE) +
+  geom_line(aes(color = Species), size=0.7, show.legend = FALSE) +
+  facet_wrap(~Species, ncol = 1, scales = "free_x") +
+  labs(y = "Sex-ratio", x = "Cohorte") +
+  scale_color_viridis(option = "viridis", discrete = TRUE) +
+  theme_bw()  +
+
+ggplot(test_005, aes(x=Cohorte, y=Effectifs, group = Species)) +
+  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE, color = "Black") +
+  facet_wrap(~Species, ncol = 1, scales = "free") +
+  labs(y = "Effectifs", x = "Cohorte") +
+  scale_fill_viridis(option = "viridis", discrete = TRUE) +
+  theme_bw()  +
+  geom_text(aes(label = Effectifs), stat = "identity", size = 1.7, vjust= -0.25, color = "black") + plot_annotation(title = "Distribution du sexe ratio (à gauche) et des effectifs (à droite) en fonction des cohortes (après filtrage d'erreur types supérieur à 0.05)") 
+
+#ggsave("SR_eff_etp_005.pdf", width = 12, height = 25)
+
+
+```
+
+Une fois qu'on aura décider où on coupe :
+ - relire le script
+ - revoir les tableaux, trier supprimer des tableaux
+ - parmis les tableaux que l'on gardera, faire attention à chaque variable dans les colonnes, supprimer les colonnes qui ne servent à rien, rajouter des colonnes : pour qu'on puisse travailler sur un tableau dont les lignes sont filtrées en fonction de l'erreur type et qui contient les variables longueurs, Area, poids...
+
+
+A partir du tableau test_010, on va regarder dans un premier temps pour le hareng s'il y a une pente  : test chez le Hareng
+```{r}
+tableau_hareng <- test_010 %>% filter(Species == "Clupea harengus")
+shapiro.test(tableau_hareng$SR) #p-value = 0.97
+
+modele_hareng_1 <- lm (SR ~ Cohorte, data = tableau_hareng)
+summary(modele_hareng_1)
+
+tableau_hareng <- tableau_hareng %>% pivot_longer(c("Femelles", "Males"))  
+names(tableau_hareng)[names(tableau_hareng) == "name"] <- "Sex"
+names(tableau_hareng)[names(tableau_hareng) == "value"] <- "Eff_Sex"
+
+
+#dupliquer les lignes
+tableau_hareng <- tableau_hareng[rep(row.names(tableau_hareng), tableau_hareng$Eff_Sex),]
+
+#On met des 0 et des 1 pour F et M resoectivement
+tableau_hareng$Eff_Sex[which(tableau_hareng$Sex == "Femelles")] <- 1 
+tableau_hareng$Eff_Sex[which(tableau_hareng$Sex == "Males")] <- 0
+
+
+#Est ce que le fait d'être femelle ou mâle s'explique par la cohorte
+library(lme4)
+modele_hareng_2<- glm(Eff_Sex ~ Cohorte, data = tableau_hareng, family = "binomial")
+summary(modele_hareng_2)
+
+
+
+ggplot(data = tableau_hareng, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  stat_smooth(method = "lm", formula = y ~x, size = 1, se = FALSE)
+  
+```
+
+
+*Nettoyage*
+```{r}
+remove(modele_hareng_1, modele_hareng_2, tableau_puissance, tableau_nb_area_sp_year, tableau_cohorte_area_SR, tableau_age, tableau_area_longer)
+```
+
+
+On va repartir du tableau de données brute : on va afficher sur le tableau de données brute le SR des espèces par cohorte (qui sera répété autant de fois qu'il y a des lignes CANoAtLngt pour ces espèces à ces cohortes) et on va enlever les lignes qui auront une erreur type de proportion supérieur à 0.05
+```{r}
+#On sélectionne les colonnes importantes dans le tableau_sp_cohorte_3 (pas hyper utile)
+tableau_sp_cohorte_3 <- subset(tableau_sp_cohorte_2, select = c(Species, Cohorte, Effectifs, SR, Femelles, Males, erreur_type_proportion_SR))
+
+remove(tableau_sp_cohorte_2)
+
+#le tableau_sp_cohorte_4 est une sous sélection de colonnes du tableau_sp_cohorte_3 que l'on va joindre au tableau de données brutes 
+tableau_sp_cohorte_4 <- subset(tableau_sp_cohorte_3, select = c(Species, Cohorte, SR, erreur_type_proportion_SR))
+names(tableau_sp_cohorte_4)[names(tableau_sp_cohorte_4) == "SR"] <- "SR_cohorte"
+
+#on joint les tableaux
+tableau_donnees_filtrees_2 <- left_join(tableau_donnees_filtrees, tableau_sp_cohorte_4, by = c("Species", "Cohorte"))
+
+#on réarange l'ordre des lignes
+tableau_donnees_filtrees_2 <- tableau_donnees_filtrees_2[order(tableau_donnees_filtrees_2$Cohorte),]
+#l'ordre des colonnes 
+tableau_donnees_filtrees_2 <- tableau_donnees_filtrees_2 %>% relocate (Cohorte, .after = Species)
+tableau_donnees_filtrees_2 <- tableau_donnees_filtrees_2 %>% relocate (SR_cohorte, .after = Cohorte)
+
+
+#on enlève les lignes pour lesquelles l'erreur type est supérieur à 0.05
+tableau_donnees_pro_sel_1<- tableau_donnees_filtrees_2[-which(tableau_donnees_filtrees_2$erreur_type_proportion_SR > 0.05), ]
+
+#et exactement égales à 0.00 ==> SR de 0 
+#tableau_donnees_pro_sel_1 : première procédure de sélection  des espèces : filtrage a priori sur base de erreur type de SR > 0.05 et sp avec plus de 20 cohorte
+#tableau_donnees_pro_sel_2 : deuxième procédure de sélection des espèces : filtrage sur la base du nombre de cohorte des sp (> 20)
+tableau_donnees_pro_sel_1 <- tableau_donnees_pro_sel_1[-which(tableau_donnees_pro_sel_1$erreur_type_proportion_SR == 0.00), ]
+tableau_donnees_pro_sel_2 <- tableau_donnees_filtrees_2[-which(tableau_donnees_filtrees_2$erreur_type_proportion_SR == 0.00), ]
+
+#on vérifie que l'erreur type du SR est bien dans les intervalles qui nous intéresse
+max(tableau_donnees_pro_sel_1$erreur_type_proportion_SR)#0.04902903
+min(tableau_donnees_pro_sel_1$erreur_type_proportion_SR)#0.00511264
+
+
+summary(tableau_donnees_pro_sel_1)
+summary(tableau_donnees_pro_sel_2)
+```
+
+*Nettoyage de tableau*
+```{r}
+remove(test_025, test_020, test_015, test_010, test_005, tableau_sp, tableau_sp_cohorte_4, tableau_etp, tableau_hareng, tableau_donnees_filtrees, tableau_donnees_filtrees_2)
+```
+
+On va enlever les espèces pour lesquelles on a moins de 20 cohortes
+
+```{r}
+#première procédure de sélection
+tableau_sp_pro_sel_1 <- aggregate(CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_pro_sel_1, FUN = sum)
+class(tableau_donnees_pro_sel_1$Cohorte)
+
+tableau_sp_pro_sel_1 <- tableau_sp_pro_sel_1[order(tableau_sp_pro_sel_1$Species),]
+tableau_sp_pro_sel_1$Cohorte_factor <- as.factor(tableau_sp_pro_sel_1$Cohorte)
+
+
+#on veut savoir combien de cohortes on a par espèces
+length(tableau_sp_pro_sel_1[which(tableau_sp_pro_sel_1$Species == "Solea solea"), "Cohorte_factor"])# 4 cohortes pour la Sole
+tapply(tableau_sp_pro_sel_1$Cohorte_factor, tableau_sp_pro_sel_1$Species , length)
+
+
+tableau_sp_nb_cohortes_pro_sel_1<- aggregate(Cohorte_factor ~ Species, data = tableau_sp_pro_sel_1, FUN = length)# enlever Engraulis encrasicolus, Glyptocephalus cynoglossus, Limanda limanda, Microstomus kitt, Mullus surmuletus, Solea solea 
+
+
+especes_a_enlever1 <- as.character(tableau_sp_nb_cohortes_pro_sel_1[ which(tableau_sp_nb_cohortes_pro_sel_1$Cohorte <= 20), "Species"])#on enlève 6 espèces
+
+#Deuxième procédure de sélection
+tableau_sp_pro_sel_2 <- aggregate(CANoAtLngt ~ Species + Cohorte, data = tableau_donnees_pro_sel_2, FUN = sum)
+class(tableau_donnees_pro_sel_2$Cohorte)
+
+tableau_sp_pro_sel_2 <- tableau_sp_pro_sel_2[order(tableau_sp_pro_sel_2$Species),]
+tableau_sp_pro_sel_2$Cohorte_factor <- as.factor(tableau_sp_pro_sel_2$Cohorte)
+
+#on veut savoir combien de cohortes on a par espèces
+length(tableau_sp_pro_sel_2[which(tableau_sp_pro_sel_2$Species == "Solea solea"), "Cohorte_factor"])# 4 cohortes pour la Sole
+tapply(tableau_sp_pro_sel_2$Cohorte_factor, tableau_sp_pro_sel_2$Species , length)
+
+
+tableau_sp_nb_cohortes_pro_sel_2<- aggregate(Cohorte_factor ~ Species, data = tableau_sp_pro_sel_2, FUN = length)# enlever Engraulis encrasicolus, Glyptocephalus cynoglossus, Limanda limanda, Microstomus kitt, Mullus surmuletus, Solea solea 
+
+
+especes_a_enlever2 <- as.character(tableau_sp_nb_cohortes_pro_sel_2[ which(tableau_sp_nb_cohortes_pro_sel_2$Cohorte <= 20), "Species"])
+```
+
+
+```{r}
+############ Filtrage (A remplacer par l'alternative en dessous de la chunk) #################
+
+### Première procédure de sélection
+
+tableau_sp_pro_sel_1 <- filter(tableau_sp_pro_sel_1, Species %nin% especes_a_enlever1)
+length(unique(tableau_sp_pro_sel_1$Species))#9 espèces
+
+tableau_donnees_pro_sel_1 <- filter(tableau_donnees_pro_sel_1, Species %nin% especes_a_enlever1)
+length(unique(tableau_donnees_pro_sel_1$Species))#on a bien 9 espèces
+
+### Deuxième procédure de sélection
+
+tableau_sp_pro_sel_2 <- filter(tableau_sp_pro_sel_2, Species %nin% especes_a_enlever2)
+length(unique(tableau_sp_pro_sel_2$Species))#10 espèces
+
+tableau_donnees_pro_sel_2 <- filter(tableau_donnees_pro_sel_2, Species %nin% especes_a_enlever2)
+length(unique(tableau_donnees_pro_sel_2$Species))#on a bien 10 espèces
+
+#################################################################################################
+```
+##### Alternative pour enlever les espèces #########
+
+######## Première procédure de sélection
+tableau_sp_pro_sel_1 <-filter(tableau_sp_pro_sel_1, species != "Engraulis encrasicolus")
+tableau_sp_pro_sel_1 <-filter(tableau_sp_pro_sel_1, species != "Glyptocephalus cynoglossus")
+tableau_sp_pro_sel_1 <-filter(tableau_sp_pro_sel_1, species != "Limanda limanda")
+tableau_sp_pro_sel_1 <-filter(tableau_sp_pro_sel_1, species != "Microstomus kitt")
+tableau_sp_pro_sel_1 <-filter(tableau_sp_pro_sel_1, species != "Mullus surmuletus")
+tableau_sp_pro_sel_1 <-filter(tableau_sp_pro_sel_1, species != "Solea solea ")
+
+tableau_donnees_pro_sel_1 <- filter(tableau_donnees_pro_sel_1, Species != "Engraulis encrasicolus")
+tableau_donnees_pro_sel_1 <- filter(tableau_donnees_pro_sel_1, Species != "Glyptocephalus cynoglossus")
+tableau_donnees_pro_sel_1 <- filter(tableau_donnees_pro_sel_1, Species != "Limanda limanda")
+tableau_donnees_pro_sel_1 <- filter(tableau_donnees_pro_sel_1, Species != "Microstomus kitt")
+tableau_donnees_pro_sel_1 <- filter(tableau_donnees_pro_sel_1, Species != "Mullus surmuletus")
+tableau_donnees_pro_sel_1 <- filter(tableau_donnees_pro_sel_1, Species != "Solea solea")
+
+####### Deuxième procédure de sélection
+tableau_sp_pro_sel_2 <-filter(tableau_sp_pro_sel_2, species != "Engraulis encrasicolus")
+tableau_sp_pro_sel_2 <-filter(tableau_sp_pro_sel_2, species != "Eutrigla gurnardus")
+tableau_sp_pro_sel_2 <-filter(tableau_sp_pro_sel_2, species != "Glyptocephalus cynoglossus")
+tableau_sp_pro_sel_2 <-filter(tableau_sp_pro_sel_2, species != "Limanda limanda")
+tableau_sp_pro_sel_2 <-filter(tableau_sp_pro_sel_2, species != "Mullus surmuletus")
+tableau_sp_pro_sel_2 <-filter(tableau_sp_pro_sel_2, species != "Solea solea ")
+
+tableau_donnees_pro_sel_2 <- filter(tableau_donnees_pro_sel_2, Species != "Engraulis encrasicolus")
+tableau_donnees_pro_sel_2 <- filter(tableau_donnees_pro_sel_2, Species != "Eutrigla gurnardus")
+tableau_donnees_pro_sel_2 <- filter(tableau_donnees_pro_sel_2, Species != "Glyptocephalus cynoglossus")
+tableau_donnees_pro_sel_2 <- filter(tableau_donnees_pro_sel_2, Species != "Limanda limanda")
+tableau_donnees_pro_sel_2 <- filter(tableau_donnees_pro_sel_2, Species != "Mullus surmuletus")
+tableau_donnees_pro_sel_2 <- filter(tableau_donnees_pro_sel_2, Species != "Solea solea")
+
+```{r}
+### Première procédure de sélection
+#Sex ratio
+a <- aggregate(CANoAtLngt ~ Species + Cohorte + Sex, data = tableau_donnees_pro_sel_1, FUN = sum)
+a <- a[order(a$Cohorte),]
+a <- a %>% pivot_wider(names_from = Sex, values_from = CANoAtLngt)
+names(a)[names(a) == "F"] <- "Femelles"
+names(a)[names(a) == "M"] <- "Males"
+a <- mutate(a, SR = Males/(Femelles + Males))
+
+#erreur type
+a <- mutate(a, et_SR = sqrt((SR*(1-SR))/(Femelles + Males)))
+tableau_sp_cohorte_pro_sel_1 <- left_join(tableau_sp_pro_sel_1, a , by = c("Species" , "Cohorte"))
+remove(a)
+
+### Deuxième procédure de sélection
+#Sex ratio
+a <- aggregate(CANoAtLngt ~ Species + Cohorte + Sex, data = tableau_donnees_pro_sel_2, FUN = sum)
+a <- a[order(a$Cohorte),]
+a <- a %>% pivot_wider(names_from = Sex, values_from = CANoAtLngt)
+names(a)[names(a) == "F"] <- "Femelles"
+names(a)[names(a) == "M"] <- "Males"
+a <- mutate(a, SR = Males/(Femelles + Males))
+
+
+#erreur type
+a <- mutate(a, et_SR = sqrt((SR*(1-SR))/(Femelles + Males)))
+tableau_sp_cohorte_pro_sel_2 <- left_join(tableau_sp_pro_sel_2, a , by = c("Species" , "Cohorte"))
+remove(a)
+```
+
+
+*nettoyage*
+```{r}
+remove(tableau_sp_nb_cohortes_pro_sel_1, tableau_sp_nb_cohortes_pro_sel_2, espece, especes_a_enlever1, especes_a_enlever2, liste_espece_out, p_h0, proportion_SR, Size, Size_power, sp, tableau_sp_pro_sel_1, tableau_sp_pro_sel_2)
+```
+
+
+
+dans un nouveau tableau de données brutes on va dupliquer les lignes selon les valeurs qu'il y a dans la colonne CANoAtLngt de tableau_donnees_filtrees_2 ==> une ligne = un individu
+```{r}
+# Première procédure de sélection
+tableau_donnees_pro_sel_1 <- tableau_donnees_pro_sel_1[order(tableau_donnees_pro_sel_1$Cohorte),]
+
+#on étend le tableau_donnees_filtrees_2
+tableau_donnees_pro_sel_1 <- tableau_donnees_pro_sel_1[rep(row.names(tableau_donnees_pro_sel_1), tableau_donnees_pro_sel_1$CANoAtLngt),]
+#une ligne = un individu
+
+# Deuxième procédure de sélection
+tableau_donnees_pro_sel_2 <- tableau_donnees_pro_sel_2[order(tableau_donnees_pro_sel_2$Cohorte),]
+
+#on étend le tableau_donnees_filtrees_2
+tableau_donnees_pro_sel_2 <- tableau_donnees_pro_sel_2[rep(row.names(tableau_donnees_pro_sel_2), tableau_donnees_pro_sel_2$CANoAtLngt),]
+#une ligne = un individu
+```
+
+
+Tester interaction taille - age
+```{r, fig.height=15, fig.width= 8}
+#ggplot (tableau_donnees_filtrees_3, aes(x = Age, y = LngtClass, color = Sex)) +
+#  geom_point() +
+#  facet_wrap(~ Species, scales = "free", ncol = 2)
+#ggsave("Age_taille.pdf", width = 8, height = 15)
+
+#ce ggplot utilise trop de RAM, ça fait buguer mon ordi
+```
+
+Reploter n ~ SR
+SR ~ Cohorte pour chaque espèce
+```{r, fig.height= 7, fig.width=10}
+#Première procédure de sélection
+tableau_sp_cohorte_pro_sel_1 <- mutate(tableau_sp_cohorte_pro_sel_1, Effectifs = Femelles + Males)
+
+ggplot(tableau_sp_cohorte_pro_sel_1, aes(x = Effectifs, y = SR)) +
+  geom_point() +
+  facet_wrap(~Species, ncol = 3, scales = "free_x") 
+
+#Deuxième procédure de sélection
+tableau_sp_cohorte_pro_sel_2 <- mutate(tableau_sp_cohorte_pro_sel_2, Effectifs = Femelles + Males)
+
+ggplot(tableau_sp_cohorte_pro_sel_2, aes(x = Effectifs, y = SR)) +
+  geom_point() +
+  facet_wrap(~Species, ncol = 3, scales = "free_x") 
+```
+
+Regarder la distribution de l'âge par espèce au cours du temps ==> pour les année et pour les cohortes en valeur absolue et en %
+```{r, fig.height= 20, fig.width=10}
+###### Première procédure de sélection #####
+#colonne qui ne contient que des 1 : c'est sur cette colonne que l'on va faire les prochaines opération (1 ligne = 1 individu)
+tableau_donnees_pro_sel_1$nb_ind <-  rep(1, nrow(tableau_donnees_pro_sel_1))
+summary(tableau_donnees_pro_sel_1$nb_ind)
+
+
+## cohorte ###
+tableau_age2 <- aggregate(nb_ind ~Species + Cohorte + Age + Sex, data = tableau_donnees_pro_sel_1, FUN = sum)
+tableau_age2 <- pivot_wider(data = tableau_age2, names_from = Sex, values_from = nb_ind)
+
+#Remplacer les Na par des 0
+tableau_age2$F[is.na(tableau_age2$F)] <- 0
+tableau_age2$M[is.na(tableau_age2$M)] <- 0
+
+#renomer les colonnes pour éviter les confusions avec FALSE
+names(tableau_age2)[names(tableau_age2) == "F"] <- "Femelles"
+names(tableau_age2)[names(tableau_age2) == "M"] <- "Males"
+
+#Colonne effectifs
+tableau_age2 <- tableau_age2[order(tableau_age2$Cohorte),]
+tableau_age2 <- mutate(tableau_age2, Effectifs = Femelles + Males)
+
+### Year ###
+tableau_age_y <- aggregate(nb_ind ~ Species + Year + Age + Sex, data = tableau_donnees_pro_sel_1, FUN = sum)
+tableau_age_y <- pivot_wider(data = tableau_age_y, names_from = Sex, values_from = nb_ind)
+tableau_age_y$F[is.na(tableau_age_y$F)] <- 0
+tableau_age_y$M[is.na(tableau_age_y$M)] <- 0
+names(tableau_age_y)[names(tableau_age_y) == "F"] <- "Femelles"
+names(tableau_age_y)[names(tableau_age_y) == "M"] <- "Males"
+tableau_age_y <- tableau_age_y[order(tableau_age_y$Year),]
+tableau_age_y <- mutate(tableau_age_y, Effectifs = Femelles + Males)
+
+############### Figure ################
+#on rajoute une colonne %
+tableau_age2 <- tableau_age2 %>% group_by(Species, Cohorte) %>% mutate(pourcentage_age = ((Effectifs*100)/sum(Effectifs)))
+tableau_age2$pourcentage_age <- round(tableau_age2$pourcentage_age, digits = 2)
+
+ggplot(tableau_age2, aes(x = Cohorte, y = pourcentage_age, by = as.factor(Age), fill = as.factor(Age))) +
+  #scale_y_log10() +
+  geom_bar(stat = "identity", position = "fill",  width = 0.9, color = "black") +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  geom_text(aes(label = pourcentage_age), stat = "identity", position = position_fill(0.5) ,color = "black", size = 2.5) + 
+  scale_color_gradientn(colours = rainbow(23))
+
+
+#### Year ####
+tableau_age_y <- tableau_age_y %>% group_by(Species, Year) %>% mutate(pourcentage_age = ((Effectifs*100)/sum(Effectifs)))
+tableau_age_y$pourcentage_age <- round(tableau_age_y$pourcentage_age, digits = 2)
+
+ggplot(tableau_age_y, aes(x = Year, y = pourcentage_age, by = as.factor(Age), fill = as.factor(Age))) +
+  geom_bar(stat = "identity", position = "fill",  width = 0.9, color = "black") +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+   geom_text(aes(label = pourcentage_age), stat = "identity", position = position_fill(0.5) ,color = "black", size = 2.5) + 
+  scale_color_gradientn(colours = rainbow(23))
+
+################################## Deuxième procédure de sélection #################################
+#colonne qui ne contient que des 1 : c'est sur cette colonne que l'on va faire les prochaines opération (1 ligne = 1 individu)
+tableau_donnees_pro_sel_2$nb_ind <-  rep(1, nrow(tableau_donnees_pro_sel_2))
+summary(tableau_donnees_pro_sel_2$nb_ind)
+
+
+## cohorte ###
+tableau_age2 <- aggregate(nb_ind ~Species + Cohorte + Age + Sex, data = tableau_donnees_pro_sel_2, FUN = sum)
+tableau_age2 <- pivot_wider(data = tableau_age2, names_from = Sex, values_from = nb_ind)
+
+#Remplacer les Na par des 0
+tableau_age2$F[is.na(tableau_age2$F)] <- 0
+tableau_age2$M[is.na(tableau_age2$M)] <- 0
+
+#renomer les colonnes pour éviter les confusions avec FALSE
+names(tableau_age2)[names(tableau_age2) == "F"] <- "Femelles"
+names(tableau_age2)[names(tableau_age2) == "M"] <- "Males"
+
+#Colonne effectifs
+tableau_age2 <- tableau_age2[order(tableau_age2$Cohorte),]
+tableau_age2 <- mutate(tableau_age2, Effectifs = Femelles + Males)
+
+### Year ###
+tableau_age_y <- aggregate(nb_ind ~ Species + Year + Age + Sex, data = tableau_donnees_pro_sel_2, FUN = sum)
+tableau_age_y <- pivot_wider(data = tableau_age_y, names_from = Sex, values_from = nb_ind)
+tableau_age_y$F[is.na(tableau_age_y$F)] <- 0
+tableau_age_y$M[is.na(tableau_age_y$M)] <- 0
+names(tableau_age_y)[names(tableau_age_y) == "F"] <- "Femelles"
+names(tableau_age_y)[names(tableau_age_y) == "M"] <- "Males"
+tableau_age_y <- tableau_age_y[order(tableau_age_y$Year),]
+tableau_age_y <- mutate(tableau_age_y, Effectifs = Femelles + Males)
+
+############### Figure ################
+#on rajoute une colonne %
+tableau_age2 <- tableau_age2 %>% group_by(Species, Cohorte) %>% mutate(pourcentage_age = ((Effectifs*100)/sum(Effectifs)))
+tableau_age2$pourcentage_age <- round(tableau_age2$pourcentage_age, digits = 2)
+
+ggplot(tableau_age2, aes(x = Cohorte, y = pourcentage_age, by = as.factor(Age), fill = as.factor(Age))) +
+  #scale_y_log10() +
+  geom_bar(stat = "identity", position = "fill",  width = 0.9, color = "black") +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+  geom_text(aes(label = pourcentage_age), stat = "identity", position = position_fill(0.5) ,color = "black", size = 2.5) + 
+  scale_color_gradientn(colours = rainbow(23))
+
+
+#### Year ####
+tableau_age_y <- tableau_age_y %>% group_by(Species, Year) %>% mutate(pourcentage_age = ((Effectifs*100)/sum(Effectifs)))
+tableau_age_y$pourcentage_age <- round(tableau_age_y$pourcentage_age, digits = 2)
+
+ggplot(tableau_age_y, aes(x = Year, y = pourcentage_age, by = as.factor(Age), fill = as.factor(Age))) +
+  geom_bar(stat = "identity", position = "fill",  width = 0.9, color = "black") +
+  facet_wrap(~Species, scale = "free", ncol = 1) +
+   geom_text(aes(label = pourcentage_age), stat = "identity", position = position_fill(0.5) ,color = "black", size = 2.5) + 
+  scale_color_gradientn(colours = rainbow(23))
+```
+**/!\ il y a 57 individus dans le jeu de données qui n'ont pas 1 an (Age == 0) mais qui ont été sexés**
+#test <- filter(tableau_donnees_filtrees_3, Age == 0)
+
+
+
+
+
+```{r}
+ggplot(tableau_donnees_pro_sel_1, aes(x = Age)) +
+  geom_bar(stat = "count") +
+  facet_wrap(~Species, scales = "free")
+
+ggplot(tableau_donnees_pro_sel_2, aes(x = Age)) +
+  geom_bar(stat = "count") +
+  facet_wrap(~Species, scales = "free")
+```
+
+
+
+Est ce qu'on a tendance à pêcher des banc de poisson? Est ce que le Sexe ratio est biaisé par année d'observation au sein des aires (j'ai juste regardé sur les données issues de la première procédure de sélection)
+```{r, fig.height=18, fig.width=20}
+######## Première procédure de sélection ########
+#SR biaisé par année d'observation?
+tableau_year <- aggregate(nb_ind ~ Species + Year + Sex, data = tableau_donnees_pro_sel_1, FUN = sum)
+tableau_year <- tableau_year[order(tableau_year$Year),]
+tableau_year <- tableau_year %>% pivot_wider(names_from = Sex, values_from = nb_ind)
+names(tableau_year)[names(tableau_year) == "F"] <- "Femelles"
+names(tableau_year)[names(tableau_year) == "M"] <- "Males"
+tableau_year$Femelles[is.na(tableau_year$Femelles)] <- 0
+tableau_year$Males[is.na(tableau_year$Males)] <- 0
+tableau_year <- mutate(tableau_year, SR = Males/(Femelles + Males))
+tableau_year <- mutate(tableau_year, Effectifs = Males + Femelles)
+
+ggplot(tableau_year, aes(x = Year, y = SR)) +
+  geom_point() +
+  facet_wrap(~ Species, scales = "free_x")
+
+#Par année d'observation et par aire de pêche?
+tableau_year_area <- aggregate(nb_ind ~ Species + Year + Sex + Area, data = tableau_donnees_pro_sel_1, FUN = sum)
+tableau_year_area <- tableau_year_area[order(tableau_year_area$Year),]
+tableau_year_area <- tableau_year_area %>% pivot_wider(names_from = Sex, values_from = nb_ind)
+names(tableau_year_area)[names(tableau_year_area) =="F"] <- "Femelles"
+names(tableau_year_area)[names(tableau_year_area) == "M"] <- "Males"
+tableau_year_area <- mutate(tableau_year_area, SR_y_a = Males/(Femelles + Males))
+tableau_year_area <- mutate(tableau_year_area, Effectifs_y_a = Males + Femelles)
+tableau_year_area$SR_y_a <- round(tableau_year_area$SR_y_a, digits = 2)
+
+ggplot(tableau_year_area, aes(x = Year, y = SR_y_a, by = as.factor(Area), fill = as.factor(Area))) +
+  geom_bar(stat = "identity", position = "fill",  width = 0.9, color = "black") +
+   geom_text(aes(label = SR_y_a), stat = "identity" , position = position_fill(.5), color = "black", size = 3) + 
+  facet_wrap(~ Species, scales = "free_x", ncol = 1) +
+  scale_color_gradientn(colours = rainbow(10))
+
+#nombre d'aires pour les années d'observation
+a <- aggregate(as.factor(Area) ~ Species + Year, data = tableau_year_area, FUN = length)
+names(a)[names(a) == "as.factor(Area)"] <- "nb_area_y"
+tableau_year <- left_join(tableau_year, a, by = c("Species", "Year"))
+remove(a, tableau_year_area)
+
+#nombre d'aires pour les cohortes
+a <- aggregate(nb_ind ~ Species + Cohorte + Area, data = tableau_donnees_pro_sel_1, FUN = sum)
+a <- a[order(a$Cohorte),]
+b <- aggregate(as.factor(Area) ~ Species + Cohorte, data = a, FUN = length)
+names(b)[names(b) == "as.factor(Area)"] <- "nb_area_c"
+tableau_sp_cohorte_pro_sel_1 <- left_join(tableau_sp_cohorte_pro_sel_1, b, by = c("Species", "Cohorte"))
+remove(a,b)
+
+tableau_sp_cohorte_pro_sel_1$SR <- round(tableau_sp_cohorte_pro_sel_1$SR, digits = 2)
+
+ggplot(tableau_sp_cohorte_pro_sel_1, aes(x = Cohorte, y = SR, by = as.factor(nb_area_c), fill = as.factor(nb_area_c))) +
+  geom_bar(stat = "identity",  width = 0.9, color = "black") +
+   geom_text(aes(label = SR), stat = "identity", vjust = -1.6 ,color = "black", size = 3) + 
+  facet_wrap(~ Species, scales = "free_x", ncol = 2) +
+  scale_color_gradientn(colours = rainbow(10))
+
+
+###### DEuxième procédure de sélection #######
+
+#SR biaisé par année d'observation?
+tableau_year <- aggregate(nb_ind ~ Species + Year + Sex, data = tableau_donnees_pro_sel_2, FUN = sum)
+tableau_year <- tableau_year[order(tableau_year$Year),]
+tableau_year <- tableau_year %>% pivot_wider(names_from = Sex, values_from = nb_ind)
+names(tableau_year)[names(tableau_year) == "F"] <- "Femelles"
+names(tableau_year)[names(tableau_year) == "M"] <- "Males"
+tableau_year$Femelles[is.na(tableau_year$Femelles)] <- 0
+tableau_year$Males[is.na(tableau_year$Males)] <- 0
+tableau_year <- mutate(tableau_year, SR = Males/(Femelles + Males))
+tableau_year <- mutate(tableau_year, Effectifs = Males + Femelles)
+
+ggplot(tableau_year, aes(x = Year, y = SR)) +
+  geom_point() +
+  facet_wrap(~ Species, scales = "free_x")
+
+#Par année d'observation et par aire de pêche?
+tableau_year_area <- aggregate(nb_ind ~ Species + Year + Sex + Area, data = tableau_donnees_pro_sel_2, FUN = sum)
+tableau_year_area <- tableau_year_area[order(tableau_year_area$Year),]
+tableau_year_area <- tableau_year_area %>% pivot_wider(names_from = Sex, values_from = nb_ind)
+names(tableau_year_area)[names(tableau_year_area) =="F"] <- "Femelles"
+names(tableau_year_area)[names(tableau_year_area) == "M"] <- "Males"
+tableau_year_area <- mutate(tableau_year_area, SR_y_a = Males/(Femelles + Males))
+tableau_year_area <- mutate(tableau_year_area, Effectifs_y_a = Males + Femelles)
+tableau_year_area$SR_y_a <- round(tableau_year_area$SR_y_a, digits = 2)
+
+ggplot(tableau_year_area, aes(x = Year, y = SR_y_a, by = as.factor(Area), fill = as.factor(Area))) +
+  geom_bar(stat = "identity", position = "fill",  width = 0.9, color = "black") +
+   geom_text(aes(label = SR_y_a), stat = "identity" , position = position_fill(.5), color = "black", size = 3) + 
+  facet_wrap(~ Species, scales = "free_x", ncol = 1) +
+  scale_color_gradientn(colours = rainbow(10))
+
+#nombre d'aires pour les années d'observation
+a <- aggregate(as.factor(Area) ~ Species + Year, data = tableau_year_area, FUN = length)
+names(a)[names(a) == "as.factor(Area)"] <- "nb_area_y"
+tableau_year <- left_join(tableau_year, a, by = c("Species", "Year"))
+remove(a, tableau_year_area)
+
+#nombre d'aires pour les cohortes
+a <- aggregate(nb_ind ~ Species + Cohorte + Area, data = tableau_donnees_pro_sel_2, FUN = sum)
+a <- a[order(a$Cohorte),]
+b <- aggregate(as.factor(Area) ~ Species + Cohorte, data = a, FUN = length)
+names(b)[names(b) == "as.factor(Area)"] <- "nb_area_c"
+tableau_sp_cohorte_pro_sel_2 <- left_join(tableau_sp_cohorte_pro_sel_2, b, by = c("Species", "Cohorte"))
+remove(a,b)
+
+tableau_sp_cohorte_pro_sel_2$SR <- round(tableau_sp_cohorte_pro_sel_2$SR, digits = 2)
+
+ggplot(tableau_sp_cohorte_pro_sel_2, aes(x = Cohorte, y = SR, by = as.factor(nb_area_c), fill = as.factor(nb_area_c))) +
+  geom_bar(stat = "identity",  width = 0.9, color = "black") +
+   geom_text(aes(label = SR), stat = "identity", vjust = -1.6 ,color = "black", size = 3) + 
+  facet_wrap(~ Species, scales = "free_x", ncol = 2) +
+  scale_color_gradientn(colours = rainbow(10))
+```
+
+
+
+
+*modèle linéaire par espèce avec en variable réponse le SR et en variable explicative la Cohorte*
+```{r}
+#Première procédure de sélection
+tableau_sp_cohorte_pro_sel_1 <- droplevels(tableau_sp_cohorte_pro_sel_1)
+tapply(tableau_sp_cohorte_pro_sel_1$SR, tableau_sp_cohorte_pro_sel_1$Species ,shapiro.test)
+
+
+tableau_sp_cohorte_pro_sel_1$Cohorte <- as.integer(tableau_sp_cohorte_pro_sel_1$Cohorte)
+
+#fitted_models = tableau_sp_cohorte_pro_sel_1 %>% 
+#  group_by(Species) %>% 
+#  do(model = lm(SR ~ Cohorte, data = .))
+
+#Deuxième procédure de sélection
+tableau_sp_cohorte_pro_sel_2 <- droplevels(tableau_sp_cohorte_pro_sel_2)
+tapply(tableau_sp_cohorte_pro_sel_2$SR, tableau_sp_cohorte_pro_sel_2$Species ,shapiro.test)
+
+
+tableau_sp_cohorte_pro_sel_2$Cohorte <- as.integer(tableau_sp_cohorte_pro_sel_2$Cohorte)
+
+#fitted_models = tableau_sp_cohorte_pro_sel_2 %>% 
+#  group_by(Species) %>% 
+#  do(model = lm(SR ~ Cohorte, data = .))
+```
+
+
+
+avec effet âge et taille
+```{r, fig.height=6, fig.width=13}
+#Première procédure de sélection
+
+###Creation tableau###
+#Age  ==> ne pas prendre en compte l'âge qui est déjà contenu dans la variable cohorte et qui est redondant avec la taille
+tableau_age <- aggregate(Age ~ Species + Cohorte, data = tableau_donnees_pro_sel_1, FUN = mean)
+tableau_age$Age <- round(tableau_age$Age, digits = 4)
+tableau_sp_cohorte_pro_sel_1 <- left_join(tableau_sp_cohorte_pro_sel_1, tableau_age, by = c("Species", "Cohorte"))
+names(tableau_sp_cohorte_pro_sel_1)[names(tableau_sp_cohorte_pro_sel_1) == "Age"] <- "Age_moyen"
+
+#Classe de taille
+tableau_taille <- aggregate(LngtClass ~ Species + Cohorte, data = tableau_donnees_pro_sel_1, FUN = mean)
+tableau_taille$LngtClass <- round(tableau_taille$LngtClass, digits = 4)
+names(tableau_taille)[names(tableau_taille) == "LngtClass"] <- "Classe_taille_moyenne"
+tableau_sp_cohorte_pro_sel_1 <- left_join(tableau_sp_cohorte_pro_sel_1, tableau_taille, by = c("Species", "Cohorte"))
+
+#DEuxième procédure de sélection
+###Creation tableau###
+#Age  ==> ne pas prendre en compte l'âge qui est déjà contenu dans la variable cohorte et qui est redondant avec la taille
+tableau_age <- aggregate(Age ~ Species + Cohorte, data = tableau_donnees_pro_sel_2, FUN = mean)
+tableau_age$Age <- round(tableau_age$Age, digits = 4)
+tableau_sp_cohorte_pro_sel_2 <- left_join(tableau_sp_cohorte_pro_sel_2, tableau_age, by = c("Species", "Cohorte"))
+names(tableau_sp_cohorte_pro_sel_2)[names(tableau_sp_cohorte_pro_sel_2) == "Age"] <- "Age_moyen"
+
+#Classe de taille
+tableau_taille <- aggregate(LngtClass ~ Species + Cohorte, data = tableau_donnees_pro_sel_2, FUN = mean)
+tableau_taille$LngtClass <- round(tableau_taille$LngtClass, digits = 4)
+names(tableau_taille)[names(tableau_taille) == "LngtClass"] <- "Classe_taille_moyenne"
+tableau_sp_cohorte_pro_sel_2 <- left_join(tableau_sp_cohorte_pro_sel_2, tableau_taille, by = c("Species", "Cohorte"))
+
+#Nettoyage tableau###
+remove(tableau_age, tableau_taille, tableau_age2, tableau_age_y)
+```
+
+
+
+Réecrire les modèles pour qu'il y ait un tableau par espèce
+à partir du tableau_donnees_filtrees_3
+et a partir du tableau_sp_cohorte_3
+
+
+Figure lm avec cohorte en variable explicative
+```{r, fig.width=10}
+##Figure
+
+ggplot(data = tableau_sp_cohorte_pro_sel_1, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95) +
+  facet_wrap(~Species, scales = "free_x", ncol = 5)
+
+ggplot(data = tableau_sp_cohorte_pro_sel_2, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95) +
+  facet_wrap(~Species, scales = "free_x", ncol = 5)
+```
+J'ai exporté les tableaux à partir desquels on fait les modèles pour alléger le script
+```{r}
+#Première procédure de sélection : 
+write.csv(tableau_donnees_pro_sel_1, "E:\\github\\travail_github\\Stage_M2_Calzan\\tableau_donnees_procedure_selection_1.csv", row.names = FALSE)
+
+write.csv(tableau_sp_cohorte_pro_sel_1, "E:\\github\\travail_github\\Stage_M2_Calzan\\table_cohorte_procedure_selection_1.csv", row.names = FALSE)
+
+#Deuxième procédure de sélection
+write.csv(tableau_donnees_pro_sel_2, "E:\\github\\travail_github\\Stage_M2_Calzan\\tableau_donnees_procedure_selection_2.csv", row.names = FALSE)
+
+write.csv(tableau_sp_cohorte_pro_sel_2, "E:\\github\\travail_github\\Stage_M2_Calzan\\table_cohorte_procedure_selection_2.csv", row.names = FALSE)
+```
+
+
+
+
+

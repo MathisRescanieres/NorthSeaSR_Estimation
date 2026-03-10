@@ -2,3 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+*.csv
+*.png
+*.gif
+*.nc
+temp_gif/
+temp_var_gif/

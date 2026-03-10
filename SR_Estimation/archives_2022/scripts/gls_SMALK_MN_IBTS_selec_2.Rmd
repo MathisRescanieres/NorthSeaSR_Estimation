@@ -1,0 +1,2370 @@
+---
+title: "Untitled"
+author: "Héloïse CALZAN"
+date: "08/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("E:\\github\\travail_github\\Stage_M2_Calzan")
+
+library(readr)
+tableau_cohortes <- read.csv("table_cohorte_procedure_selection_2.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+
+```
+
+explorations des tableaux
+```{r, include=FALSE}
+#tableau_cohortes
+summary(tableau_cohortes)
+sapply(tableau_cohortes,FUN=function(el) sum(is.na(el)))
+sapply(tableau_cohortes, FUN = class)
+
+tableau_cohortes$Species <- as.factor(tableau_cohortes$Species)
+tableau_cohortes$Cohorte_factor <- as.factor(tableau_cohortes$Cohorte_factor)
+
+sapply(tableau_cohortes, FUN = levels)
+```
+
+
+Figure lm avec cohorte en variable explicative
+```{r, fig.width=15, fig.height=5}
+library(ggplot2)
+##Figure
+ggplot(data = tableau_cohortes, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95) +
+  facet_wrap(~Species, scales = "free_x", ncol = 5) +
+  theme_light()
+```
+
+
+Librairies modèles
+```{r library, include = FALSE}
+library(lmtest)
+library(lme4)
+library(car)
+library(nlme)
+library(dplyr)
+library(tidyverse)
+library(EnvStats)
+library(outliers)
+library(effects)
+```
+fonctions utiles
+```{r}
+#fonction qui fait tous les plots dont on a besoin pour l'évaluation des modèles + le summary, le test d'homoscedasticité et le test de normalité des résidus
+
+fonction_resume_plot <- function(tableau, modele, SR) {
+  resum_modele <- summary(modele)
+  normalite_modele <- shapiro.test(residuals(modele)) 
+  st_normalite_modele <- shapiro.test(rstandard(modele))
+  homosce_modele <- bptest(modele) 
+  plot_modele <- plot(modele)
+
+  Re <- rep(NA, max(tableau$Cohorte) - min(tableau$Cohorte))
+  pos_Re <- tableau$Cohorte - min(tableau$Cohorte) +1
+  Re[pos_Re] <- rstandard(modele)
+  acf_modele <- acf(Re, na.action = na.pass, lag.max = 57)
+  pacf_modele <- pacf(Re, na.action = na.pass, lag.max = 57)
+  
+  o_p <- lm(predict(modele) ~ SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["SR"]]
+  obs_pred <- ggplot(tableau, aes(x = SR , y = predict.lm(modele))) +
+    geom_point() +
+    geom_smooth(colour = "#CC0033", method = "lm", fill = "#CC0033", formula = y ~ x) +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    #geom_segment(aes(x = 0.33, y = 0.33, xend = 0.55, yend = 0.55), colour = "green") +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+    ylim(0, 1) +
+    xlim(0 , 1)
+  
+  liste_modele <- list("modele" = modele, "resume" = resum_modele, "test_shapiro" = normalite_modele, "test_homoscedasticite" = homosce_modele, "plot_modele" = plot_modele, "autoc" = acf_modele, "partial_autoc" = pacf_modele, "plot_osb_pred" = obs_pred, "Re" = Re)
+  
+  return(liste_modele)
+
+}
+
+#cette fonction ne fait pas le test d'homoscedasticité (pour les modèles nuls)
+fonction_resume_plot_nul <- function(tableau, modele, SR) {
+  resum_modele <- summary(modele)
+  normalite_modele <- shapiro.test(residuals(modele)) 
+  st_normalite_modele <- shapiro.test(rstandard(modele))
+  plot_modele <- plot(modele)
+  
+  Re <- rep(NA, max(tableau$Cohorte) - min(tableau$Cohorte))
+  pos_Re <- tableau$Cohorte - min(tableau$Cohorte) +1
+  Re[pos_Re] <- rstandard(modele)
+  acf_modele <- acf(Re, na.action = na.pass, lag.max = 57)
+  pacf_modele <- pacf(Re, na.action = na.pass, lag.max = 57)
+  
+  o_p <- lm(predict(modele) ~ SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["SR"]]
+  obs_pred <- ggplot(tableau, aes(x = SR , y = predict.lm(modele))) +
+    geom_point() +
+    geom_smooth(colour = "#CC0033", method = "lm", fill = "#CC0033", formula = y ~ x) +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633")
+    theme_classic() +
+    #geom_segment(aes(x = 0.33, y = 0.33, xend = 0.55, yend = 0.55), colour = "green") +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+      ggtitle(subtitle = "sans selection a priori")
+  
+  liste_modele <- list("modele" = modele, "resume" = resum_modele, "test_shapiro" = normalite_modele, "plot_modele" = plot_modele, "autoc" = acf_modele, "partial_autoc" = pacf_modele, "plot_osb_pred" = obs_pred, "Re" = Re)
+  
+  return(liste_modele)
+}
+
+acf_pacf_gls_fonction <- function(tableau, modele){
+  Re <- rep(NA, max(tableau$Cohorte) - min(tableau$Cohorte))
+  position <- tableau$Cohorte - min(tableau$Cohorte) + 1
+  Re[position] <- resid(modele, type = "n")
+  acf(Re, na.action = na.pass, lag.max = 57)
+  pacf(Re, na.action = na.pass, lag.max = 57)
+}
+
+fonction_corr <- function(tableau){
+  #tableau de correlation
+  corr <- cor(tableau[,c("Sc_cohorte", "Sc_nb_area", "Sc_taille_moy", "Sc_age_moy")])
+  return(corr)
+}
+
+fonction_scale_c <- function(tableau){
+  tableau <- tableau[order(tableau$Cohorte),]
+  #centrer-reduire les variables explicatives
+  tableau <- mutate(tableau, Sc_cohorte = as.numeric(scale(Cohorte)))
+  tableau <- mutate(tableau, Sc_nb_area = as.numeric(scale(nb_area_c)))
+  tableau <- mutate(tableau, Sc_age_moy = as.numeric(scale(Age_moyen)))
+  tableau <- mutate(tableau, Sc_taille_moy = as.numeric(scale(Classe_taille_moyenne)))
+}
+```
+
+PACF : ordre du terme de moyenne mobile q
+ACF : ordre du terme autorégressif p
+
+
+**Echelle cohorte/SR :**
+*hareng*
+```{r, include=FALSE}
+#par cohorte
+table_hareng_c <- filter(tableau_cohortes, Species == "Clupea harengus")
+table_hareng_c <- fonction_scale_c(tableau = table_hareng_c)
+fonction_corr(tableau = table_hareng_c)
+table_hareng_c <-table_hareng_c[-c(2),] #on pourrait laisser le 1
+```
+
+Modèle complet
+L'option include = FALSE permet de ne pas afficher les résultats des chunks (R sauvegarde les résultats de chaque chunk et les affiche par défaut à l'ouverture, dans mon cas cela prenait trop de temps)
+
+On test les outliers sur les résidus brutes du modèles complet
+
+*Modèle linéaire*
+```{r, include = FALSE}
+#############################  Modèle complet #####################################
+M_SR_H_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_hareng_c)
+rosnerTest(residuals(M_SR_H_c), k = 5) # pas d'outlier
+grubbs.test(residuals(M_SR_H_c))
+grubbs.test(residuals(M_SR_H_c), opposite = TRUE)
+vif(M_SR_H_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_c , SR = table_hareng_c$SR)
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_H_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_1 , SR = table_hareng_c$SR)
+
+# + Sc_nb_area 
+M_SR_H_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_2 , SR = table_hareng_c$SR)
+
+#+ Sc_age_moy
+M_SR_H_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_3 , SR = table_hareng_c$SR)
+
+#+ Sc_taille_moy
+M_SR_H_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_4 , SR = table_hareng_c$SR)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_H_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_5 , SR = table_hareng_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_H_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_6 , SR = table_hareng_c$SR)
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_H_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_7 , SR = table_hareng_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_H_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_8 , SR = table_hareng_c$SR)
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_H_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_9 , SR = table_hareng_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_H_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_hareng_c) 
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_10 , SR = table_hareng_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_H_11 <- lm(SR ~ Sc_cohorte, data = table_hareng_c) 
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_11 , SR = table_hareng_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_H_12 <- lm(SR ~  Sc_age_moy, data = table_hareng_c) 
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_12 , SR = table_hareng_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_H_13 <- lm(SR ~  Sc_taille_moy, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_13 , SR = table_hareng_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_H_14 <- lm(SR ~  Sc_nb_area, data = table_hareng_c)
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_14 , SR = table_hareng_c$SR)
+
+#Modele nul
+M_SR_H_nul <- lm(SR ~ 1, data = table_hareng_c)
+fonction_resume_plot_nul(tableau = table_hareng_c, modele = M_SR_H_nul , SR = table_hareng_c$SR)
+```
+
+*gls*
+Il y a de l'autocorrelation, mais elle est minime et je ne trouve pas une combinaison de p et q qui permet de prendre en compte l'autocorrélation sans faire baiser l'AIC du modèle
+```{r}
+#############################  Modèle complet #####################################
+M_SR_H_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_hareng_c,  method = "ML")# AIC : -200.4506   REML  : 106.2253
+
+#M_SR_H_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_hareng_c, correlation = corARMA(form = ~Cohorte, p = 7, q = 5))#REML : 117.0531   AIC : -198.1062
+acf_pacf_gls_fonction(tableau = table_hareng_c, modele = M_SR_H_cgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_H_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_hareng_c, method = "ML")
+
+# Sc_nb_area +
+M_SR_H_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_hareng_c, method = "ML")
+
+#+ Sc_age_moy
+M_SR_H_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_hareng_c, method = "ML")
+
+#+ Sc_taille_moy
+M_SR_H_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_hareng_c, method = "ML")
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_H_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_hareng_c, method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_H_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_hareng_c, method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_H_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_hareng_c, method = "ML")
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_H_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_hareng_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_H_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_hareng_c, method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_H_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_hareng_c, method = "ML")
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_H_11gls <- gls(SR ~ Sc_cohorte, data = table_hareng_c, method = "ML")
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_H_12gls <- gls(SR ~ Sc_age_moy, data = table_hareng_c, method = "ML")
+
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_H_13gls <- gls(SR ~  Sc_taille_moy, data = table_hareng_c, method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_H_14gls <- gls(SR ~  Sc_nb_area, data = table_hareng_c, method = "ML")
+
+#Modele nul
+M_SR_H_nulgls <- gls(SR ~ 1, data = table_hareng_c, method = "ML")
+```
+
+
+```{r}
+AIC(M_SR_H_cgls)
+AIC(M_SR_H_1gls)
+AIC(M_SR_H_2gls)#-252.4391
+AIC(M_SR_H_3gls) 
+AIC(M_SR_H_4gls) 
+AIC(M_SR_H_5gls)
+AIC(M_SR_H_6gls)#
+AIC(M_SR_H_7gls)
+AIC(M_SR_H_8gls)#
+AIC(M_SR_H_9gls)
+AIC(M_SR_H_10gls)#
+AIC(M_SR_H_11gls)#-253.2428
+AIC(M_SR_H_12gls)
+AIC(M_SR_H_13gls)
+AIC(M_SR_H_14gls)
+AIC(M_SR_H_nulgls)#
+
+Anova(M_SR_H_11gls, type = "II")
+Anova(M_SR_H_cgls)
+#vif(M_SR_H_11gls)
+summary(M_SR_H_11gls)
+
+o_p <- lm(predict(M_SR_H_11gls) ~ table_hareng_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_hareng_c$SR"]]
+   ggplot(table_hareng_c, aes(x = SR , y = predict(M_SR_H_11gls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Hareng", subtitle = "sans selection a priori")
+   
+   
+summary(M_SR_H_c)
+M_SR_H_cgls
+
+
+#predictions qui ne tiennent pas compte de l'année
+ggplot(table_hareng_c, aes(x = Sc_cohorte, y = residuals(M_SR_H_1gls))) +
+  geom_point() +
+  geom_abline(intercept = 0.478857808, slope = -0.023709642, colour = "red") +
+  geom_smooth(method = "lm")
+
+M_SR_H_10gls
+
+#predict(M_SR_H_1gls) ==> preduction du SR sachant les autres variables
+ggplot(table_hareng_c, aes(x = Cohorte)) +
+  geom_point(aes(y = predict(M_SR_H_1gls), colour = "red")) +
+  geom_point(aes(y = SR)) +
+  geom_point(aes(y = predict(M_SR_H_cgls), colour = "blue"))
+
+M_SR_H_11gls$sigma
+M_SR_H_11gls$coefficients
+
+summary(M_SR_H_11gls)
+sqrt(diag(vcov(M_SR_H_11gls)))
+
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_c, SR = table_hareng_c$SR)
+
+fonction_resume_plot(tableau = table_hareng_c, modele = M_SR_H_11, SR = table_hareng_c$SR)
+```
+
+
+vcov donne les covariances de tous les paramètres : matrice de covariance
+la diagonale de cette matrice ==> variance 
+
+```{r}
+remove(M_SR_H_c, M_SR_H_1, M_SR_H_2, M_SR_H_3, M_SR_H_4, M_SR_H_5, M_SR_H_6, M_SR_H_7, M_SR_H_8, M_SR_H_9, M_SR_H_10, M_SR_H_11, M_SR_H_12, M_SR_H_13, M_SR_H_14, M_SR_H_nul) 
+       
+#remove(M_SR_H_cgls, M_SR_H_1gls, M_SR_H_2gls, M_SR_H_3gls, M_SR_H_4gls, M_SR_H_5gls, M_SR_H_6gls, M_SR_H_7gls, M_SR_H_8gls, M_SR_H_9gls, M_SR_H_10gls, M_SR_H_11gls, M_SR_H_12gls, M_SR_H_13gls, M_SR_H_14gls, M_SR_H_nulgls)
+
+```
+
+*Aiglefin*
+```{r, include=FALSE}
+table_aiglefin_c <- filter(tableau_cohortes, Species == "Melanogrammus aeglefinus")
+table_aiglefin_c <- fonction_scale_c(tableau = table_aiglefin_c)
+fonction_corr(tableau = table_aiglefin_c)
+table_aiglefin_c <- table_aiglefin_c[-c(54),]# 26,  42, 32, 14 
+```
+
+*lm*
+```{r, include=FALSE}
+#############################  Modèle complet #####################################
+M_SR_A_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_aiglefin_c)
+vif(M_SR_A_c)
+grubbs.test(residuals.lm(M_SR_A_c), type = 10)
+rosnerTest(residuals(M_SR_A_c), k = 10)
+
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_c , SR = table_aiglefin_c$SR)
+
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_A_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_1 , SR = table_aiglefin_c$SR)
+
+# + Sc_nb_area 
+M_SR_A_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_2 , SR = table_aiglefin_c$SR)
+
+#+ Sc_age_moy
+M_SR_A_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_3 , SR = table_aiglefin_c$SR)
+
+#+ Sc_taille_moy
+M_SR_A_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_4 , SR = table_aiglefin_c$SR)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_A_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_5 , SR = table_aiglefin_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_A_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_6 , SR = table_aiglefin_c$SR)
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_A_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_7 , SR = table_aiglefin_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_A_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_8 , SR = table_aiglefin_c$SR)
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_A_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_9 , SR = table_aiglefin_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_A_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_aiglefin_c) 
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_10 , SR = table_aiglefin_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_A_11 <- lm(SR ~ Sc_cohorte, data = table_aiglefin_c) 
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_11 , SR = table_aiglefin_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_A_12 <- lm(SR ~  Sc_age_moy, data = table_aiglefin_c) 
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_12 , SR = table_aiglefin_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_A_13 <- lm(SR ~  Sc_taille_moy, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_13 , SR = table_aiglefin_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_A_14 <- lm(SR ~  Sc_nb_area, data = table_aiglefin_c)
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_14 , SR = table_aiglefin_c$SR)
+
+#Modele nul
+M_SR_A_nul <- lm(SR ~ 1, data = table_aiglefin_c)
+#fonction_resume_plot_nul(tableau = table_aiglefin_c, modele = M_SR_A_nul , SR = table_aiglefin_c$SR)
+```
+
+```{r}
+#############################  Modèle complet #####################################
+M_SR_A_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_aiglefin_c)
+# autocorrélation  AIC : -178.7417 , REML : 95.37085
+
+M_SR_A_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_aiglefin_c, method = "ML")#-180.4897   REML : 100.2449
+vif(M_SR_A_cgls)
+acf_pacf_gls_fonction(table_aiglefin_c, M_SR_A_cgls)
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_A_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_aiglefin_c, method = "ML")
+# + Sc_nb_area 
+M_SR_A_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_aiglefin_c, method = "ML")
+
+#+ Sc_age_moy
+M_SR_A_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_aiglefin_c, method = "ML")
+
+#+ Sc_taille_moy
+M_SR_A_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_aiglefin_c, method = "ML")
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_A_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_aiglefin_c, method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_A_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_aiglefin_c, method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_A_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_aiglefin_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_A_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_aiglefin_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_A_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_aiglefin_c, method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_A_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_aiglefin_c, method = "ML")
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_A_11gls <- gls(SR ~ Sc_cohorte, data = table_aiglefin_c, method = "ML")#-221.8527
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_A_12gls <- gls(SR ~ Sc_age_moy, data = table_aiglefin_c, method = "ML")#-182.83
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_A_13gls <- gls(SR ~  Sc_taille_moy, data = table_aiglefin_c, method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_A_14gls <- gls(SR ~  Sc_nb_area, data = table_aiglefin_c, method = "ML")
+
+################### Modele nul #####################################"
+M_SR_A_nulgls <- gls(SR ~ 1, data = table_aiglefin_c, method = "ML")
+
+```
+
+
+
+```{r}
+AIC(M_SR_A_cgls)
+AIC(M_SR_A_1gls)#-233.5923
+AIC(M_SR_A_2gls)
+AIC(M_SR_A_3gls)#-232.5269 
+AIC(M_SR_A_4gls) 
+AIC(M_SR_A_5gls)#
+AIC(M_SR_A_6gls)
+AIC(M_SR_A_7gls)#-234.4716
+AIC(M_SR_A_8gls)
+AIC(M_SR_A_9gls)#
+AIC(M_SR_A_10gls)
+AIC(M_SR_A_11gls)
+AIC(M_SR_A_12gls)#
+AIC(M_SR_A_13gls)
+AIC(M_SR_A_14gls)
+AIC(M_SR_A_nulgls)
+
+Anova(M_SR_A_1gls)
+summary(M_SR_A_7gls)
+Anova(M_SR_A_7gls)
+Anova(M_SR_A_cgls)# Pas d'effet de la cohorte
+vif(M_SR_A_cgls)
+sqrt(diag(vcov(M_SR_A_7gls)))
+
+M_SR_H_7gls
+
+
+o_p <- lm(predict(M_SR_A_7gls) ~ table_aiglefin_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_aiglefin_c$SR"]]
+   ggplot(table_aiglefin_c, aes(x = SR , y = predict(M_SR_A_7gls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Aiglefin", subtitle = "sans selection a priori")   
+   
+fonction_resume_plot(tableau = table_aiglefin_c, modele = M_SR_A_c, SR = table_aiglefin_c$SR)
+```
+Predict calcule la réponse prédite par la modèle pour de nouvelles valeurs des variables explicatives ainsi que des intervalles de confiance ou de prédiction liés.
+
+
+```{r}
+remove(M_SR_A_c, M_SR_A_1, M_SR_A_2, M_SR_A_3, M_SR_A_4, M_SR_A_5, M_SR_A_6, M_SR_A_7, M_SR_A_8, M_SR_A_9, M_SR_A_10, M_SR_A_11, M_SR_A_12, M_SR_A_13, M_SR_A_14, M_SR_A_nul)
+#remove(M_SR_A_cgls, M_SR_A_1gls, M_SR_A_2gls, M_SR_A_3gls, M_SR_A_4gls, M_SR_A_5gls, M_SR_A_6gls, M_SR_A_7gls, M_SR_A_8gls, M_SR_A_9gls, M_SR_A_10gls, M_SR_A_11gls, M_SR_A_12gls, M_SR_A_13gls, M_SR_A_14gls, M_SR_A_nulgls)
+
+```
+
+*Morue*
+```{r, include=FALSE}
+table_morue_c <- filter(tableau_cohortes, Species == "Gadus morhua")
+table_morue_c <- fonction_scale_c(tableau = table_morue_c)
+fonction_corr(tableau = table_morue_c)
+
+table_morue_c <- table_morue_c[-c(3, 1, 4, 5, 13, 11, 52),]#, 47 #1 enlevé sur la base du graphe
+#table_morue_c <- table_morue_c[-c(3),]# 5, 1, 58
+
+#############################  Modèle complet #####################################
+M_SR_Mo_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_morue_c)
+grubbs.test(residuals(M_SR_Mo_c), type = 10)
+rosnerTest(residuals(M_SR_Mo_c), k = 10)# 7, 5 et 46
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_c , SR = table_morue_c$SR)
+vif(M_SR_Mo_c)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_Mo_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_1 , SR = table_morue_c$SR)
+
+# + Sc_nb_area 
+M_SR_Mo_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_2 , SR = table_morue_c$SR)
+
+#+ Sc_age_moy
+M_SR_Mo_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_3 , SR = table_morue_c$SR)
+
+#+ Sc_taille_moy
+M_SR_Mo_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_4 , SR = table_morue_c$SR)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_Mo_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_5 , SR = table_morue_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_Mo_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_6 , SR = table_morue_c$SR)
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_Mo_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_7 , SR = table_morue_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_Mo_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_8 , SR = table_morue_c$SR)
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_Mo_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_9 , SR = table_morue_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_Mo_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_morue_c) 
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_10 , SR = table_morue_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_Mo_11 <- lm(SR ~ Sc_cohorte, data = table_morue_c) 
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_11 , SR = table_morue_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_Mo_12 <- lm(SR ~  Sc_age_moy, data = table_morue_c) 
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_12 , SR = table_morue_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_Mo_13 <- lm(SR ~  Sc_taille_moy, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_13 , SR = table_morue_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_Mo_14 <- lm(SR ~  Sc_nb_area, data = table_morue_c)
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_14 , SR = table_morue_c$SR)
+
+#Modele nul
+M_SR_Mo_nul <- lm(SR ~ 1, data = table_morue_c)
+fonction_resume_plot_nul(tableau = table_morue_c, modele = M_SR_Mo_nul , SR = table_morue_c$SR)
+```
+
+
+```{r, fig.height=4, fig.width=6}
+#############################  Modèle complet #####################################
+M_SR_Mo_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_morue_c,  correlation = corARMA(form = ~ Cohorte, p = 4, q = 2)) #-231.1915
+AIC(M_SR_Mo_cgls)
+acf_pacf_gls_fonction(tableau = table_morue_c, modele = M_SR_Mo_cgls)
+
+vif(M_SR_Mo_cgls)
+AIC(M_SR_Mo_cgls)
+acf_pacf_gls_fonction(tableau = table_morue_c, modele = M_SR_Mo_cgls)
+# autocorrélation  AIC : -196.6741 , REML : 104.3371
+
+M_SR_Mo_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2),method = "ML")
+#M_SR_Mo_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 6 , q = 2))
+AIC(M_SR_Mo_cgls)
+acf_pacf_gls_fonction(tableau = table_morue_c, modele = M_SR_Mo_cgls)
+vif(M_SR_Mo_cgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_Mo_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+vif(M_SR_Mo_1gls)
+# + Sc_nb_area 
+
+M_SR_Mo_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+#Error in gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_morue_c,  : singular convergence (7)
+
+#+ Sc_age_moy
+M_SR_Mo_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+#+ Sc_taille_moy
+M_SR_Mo_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_Mo_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_Mo_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_Mo_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_Mo_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_Mo_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_Mo_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_Mo_11gls <- gls(SR ~ Sc_cohorte, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")#-221.8527
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_Mo_12gls <- gls(SR ~ Sc_age_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")#-182.83
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_Mo_13gls <- gls(SR ~  Sc_taille_moy, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_Mo_14gls <- gls(SR ~  Sc_nb_area, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+
+################### Modele nul #####################################"
+M_SR_Mo_nulgls <- gls(SR ~ 1, data = table_morue_c, correlation = corARMA(form = ~ Cohorte, p = 4 , q = 2), method = "ML")
+#
+
+```
+
+
+
+```{r}
+AIC(M_SR_Mo_cgls)#
+AIC(M_SR_Mo_1gls)#-291.8333
+AIC(M_SR_Mo_2gls) 
+AIC(M_SR_Mo_3gls) 
+AIC(M_SR_Mo_4gls) 
+AIC(M_SR_Mo_5gls)
+AIC(M_SR_Mo_6gls)
+AIC(M_SR_Mo_7gls)
+AIC(M_SR_Mo_8gls)
+AIC(M_SR_Mo_9gls)
+AIC(M_SR_Mo_10gls)
+AIC(M_SR_Mo_11gls)#
+AIC(M_SR_Mo_12gls)
+AIC(M_SR_Mo_13gls)
+AIC(M_SR_Mo_14gls)
+AIC(M_SR_Mo_nulgls)
+
+
+Anova(M_SR_Mo_cgls)
+vif(M_SR_Mo_1gls)
+Anova(M_SR_Mo_1gls)
+acf_pacf_gls_fonction(tableau = table_morue_c, M_SR_Mo_1gls)
+
+vif(M_SR_Mo_cgls)#vif enorme
+vif(M_SR_Mo_2)
+fonction_corr(tableau = table_morue_c)#cohorte corrélée à la taille et à l'âge
+
+summary(M_SR_Mo_c)
+
+
+o_p <- lm(predict(M_SR_Mo_1gls) ~ table_morue_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_morue_c$SR"]]
+   ggplot(table_morue_c, aes(x = SR , y = predict(M_SR_Mo_1gls))) +
+    geom_point(position = "jitter", alpha = 0.1) +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR")  +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Morue", subtitle = "sans selection a priori") 
+   
+sqrt(diag(vcov(M_SR_A_1gls)))
+
+
+fonction_resume_plot(tableau = table_morue_c, modele = M_SR_Mo_c, SR= table_morue_c$SR)
+```
+
+
+
+
+```{r}
+remove(M_SR_Mo_c, M_SR_Mo_1, M_SR_Mo_2, M_SR_Mo_3, M_SR_Mo_4, M_SR_Mo_5, M_SR_Mo_6, M_SR_Mo_7, M_SR_Mo_8, M_SR_Mo_9, M_SR_Mo_10, M_SR_Mo_11, M_SR_Mo_12, M_SR_Mo_13, M_SR_Mo_14, M_SR_Mo_nul) 
+#remove(M_SR_Mo_cgls, M_SR_Mo_1gls, M_SR_Mo_2gls, M_SR_Mo_3gls, M_SR_Mo_4gls, M_SR_Mo_5gls, M_SR_Mo_6gls, M_SR_Mo_7gls, M_SR_Mo_8gls, M_SR_Mo_9gls, M_SR_Mo_10gls, M_SR_Mo_11gls, M_SR_Mo_12gls, M_SR_Mo_13gls, M_SR_Mo_14gls, M_SR_Mo_nulgls)
+```
+On laisse tomber la morue parce que le vif de la cohorte est trop grand
+
+
+```{r, include=FALSE}
+table_merlan_c <- filter(tableau_cohortes, Species == "Merlangius merlangus")
+table_merlan_c <- fonction_scale_c(tableau = table_merlan_c)
+fonction_corr(tableau = table_merlan_c)
+#table_merlan_c <- table_merlan_c[-c(3),]
+table_merlan_c <- table_merlan_c[-c(3, 1),]#1,33, 28,
+
+#############################  Modèle complet #####################################
+M_SR_Me_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_merlan_c)
+grubbs.test(residuals(M_SR_Me_c), type = 10)
+rosnerTest(residuals(M_SR_Me_c), k = 5)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_c , SR = table_merlan_c$SR)
+vif(M_SR_Me_c)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_Me_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_1 , SR = table_merlan_c$SR)
+
+# + Sc_nb_area 
+M_SR_Me_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_2 , SR = table_merlan_c$SR)
+
+#+ Sc_age_moy
+M_SR_Me_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_3 , SR = table_merlan_c$SR)
+
+#+ Sc_taille_moy
+M_SR_Me_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_4 , SR = table_merlan_c$SR)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_Me_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_5 , SR = table_merlan_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_Me_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_6 , SR = table_merlan_c$SR)
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_Me_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_7 , SR = table_merlan_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_Me_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_8 , SR = table_merlan_c$SR)
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_Me_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_9 , SR = table_merlan_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_Me_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_merlan_c) 
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_10 , SR = table_merlan_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_Me_11 <- lm(SR ~ Sc_cohorte, data = table_merlan_c) 
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_11 , SR = table_merlan_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_Me_12 <- lm(SR ~  Sc_age_moy, data = table_merlan_c) 
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_12 , SR = table_merlan_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_Me_13 <- lm(SR ~  Sc_taille_moy, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_13 , SR = table_merlan_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_Me_14 <- lm(SR ~  Sc_nb_area, data = table_merlan_c)
+fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_14 , SR = table_merlan_c$SR)
+
+#Modele nul
+M_SR_Me_nul <- lm(SR ~ 1, data = table_merlan_c)
+fonction_resume_plot_nul(tableau = table_merlan_c, modele = M_SR_Me_nul , SR = table_merlan_c$SR)
+```
+
+```{r}
+#############################  Modèle complet #####################################
+M_SR_Me_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_merlan_c, method = "ML")
+acf_pacf_gls_fonction(table_merlan_c, M_SR_Me_cgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_Me_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_merlan_c, method = "ML")
+
+# + Sc_nb_area 
+M_SR_Me_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_merlan_c, method = "ML")
+
+#+ Sc_age_moy
+M_SR_Me_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_merlan_c, method = "ML")
+
+#+ Sc_taille_moy
+M_SR_Me_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_merlan_c, method = "ML")
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_Me_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_merlan_c, method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_Me_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_merlan_c, method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_Me_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_merlan_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_Me_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_merlan_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_Me_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_merlan_c, method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_Me_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_merlan_c, method = "ML")
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_Me_11gls <- gls(SR ~ Sc_cohorte, data = table_merlan_c, method = "ML")#-221.8527
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_Me_12gls <- gls(SR ~ Sc_age_moy, data = table_merlan_c, method = "ML")#-182.83
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_Me_13gls <- gls(SR ~  Sc_taille_moy, data = table_merlan_c, method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_Me_14gls <- gls(SR ~  Sc_nb_area, data = table_merlan_c, method = "ML")
+
+################### Modele nul #####################################"
+M_SR_Me_nulgls <- gls(SR ~ 1, data = table_merlan_c, method = "ML")
+```
+
+
+```{r}
+AIC(M_SR_Me_cgls)
+AIC(M_SR_Me_1gls)
+AIC(M_SR_Me_2gls) 
+AIC(M_SR_Me_3gls) 
+AIC(M_SR_Me_4gls) 
+AIC(M_SR_Me_5gls)
+AIC(M_SR_Me_6gls)#-251.0283
+AIC(M_SR_Me_7gls)
+AIC(M_SR_Me_8gls)
+AIC(M_SR_Me_9gls)
+AIC(M_SR_Me_10gls)
+AIC(M_SR_Me_11gls)
+AIC(M_SR_Me_12gls)
+AIC(M_SR_Me_13gls)
+AIC(M_SR_Me_14gls)
+AIC(M_SR_Me_nulgls)
+
+Anova(M_SR_Me_6gls)
+Anova(M_SR_Me_cgls)
+vif(M_SR_Me_cgls)
+vif(M_SR_Me_6gls)
+#Effet Cohorte 
+sqrt(diag(vcov(M_SR_Me_6gls)))
+
+
+o_p <- lm(predict(M_SR_Me_6gls) ~ table_merlan_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_merlan_c$SR"]]
+   ggplot(table_merlan_c, aes(x = SR , y = predict(M_SR_Me_6gls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Merlan", subtitle = "sans selection a priori") 
+   
+   fonction_resume_plot(tableau = table_merlan_c, modele = M_SR_Me_c, SR = table_merlan_c$SR)
+```
+
+```{r}
+remove(M_SR_Me_c, M_SR_Me_1, M_SR_Me_2, M_SR_Me_3, M_SR_Me_4, M_SR_Me_5, M_SR_Me_6, M_SR_Me_7, M_SR_Me_8, M_SR_Me_9, M_SR_Me_10, M_SR_Me_11, M_SR_Me_12, M_SR_Me_13, M_SR_Me_14, M_SR_Me_nul,  M_SR_Me_cgls)
+#remove(M_SR_Me_1gls, M_SR_Me_2gls, M_SR_Me_3gls, M_SR_Me_4gls, M_SR_Me_5gls, M_SR_Me_6gls, M_SR_Me_7gls, M_SR_Me_8gls, M_SR_Me_9gls, M_SR_Me_10gls, M_SR_Me_11gls, M_SR_Me_12gls, M_SR_Me_13gls, M_SR_Me_14gls, M_SR_Me_nulgls)
+```
+
+
+
+```{r, include=FALSE}
+#, include=FALSE
+table_plie_c <- filter(tableau_cohortes, Species == "Pleuronectes platessa")
+table_plie_c <- fonction_scale_c(tableau = table_plie_c)
+fonction_corr(tableau = table_plie_c)
+table_plie_c <- table_plie_c[-c(38, 1),]# 38 selon les test et 1 sleon obsevration des plot
+
+#############################  Modèle complet #####################################
+M_SR_P_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_c , SR = table_plie_c$SR)
+vif(M_SR_P_c)
+
+grubbs.test(residuals(M_SR_P_c), type = 10)
+rosnerTest(residuals(M_SR_P_c), k = 5)
+
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_P_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_1 , SR = table_plie_c$SR)
+vif(M_SR_P_1)
+# + Sc_nb_area 
+M_SR_P_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_2 , SR = table_plie_c$SR)
+vif(M_SR_P_2)# La cohorte ne pose pas de pb
+
+
+#+ Sc_age_moy
+M_SR_P_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_3 , SR = table_plie_c$SR)
+vif(M_SR_P_3)
+#+ Sc_taille_moy
+M_SR_P_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_4 , SR = table_plie_c$SR)
+vif(M_SR_P_4)
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_P_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_5 , SR = table_plie_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_P_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_6 , SR = table_plie_c$SR)
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_P_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_7 , SR = table_plie_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_P_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_8 , SR = table_plie_c$SR)
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_P_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_9 , SR = table_plie_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_P_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_plie_c) 
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_10 , SR = table_plie_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_P_11 <- lm(SR ~ Sc_cohorte, data = table_plie_c) 
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_11 , SR = table_plie_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_P_12 <- lm(SR ~  Sc_age_moy, data = table_plie_c) 
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_12 , SR = table_plie_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_P_13 <- lm(SR ~  Sc_taille_moy, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_13 , SR = table_plie_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_P_14 <- lm(SR ~  Sc_nb_area, data = table_plie_c)
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_14 , SR = table_plie_c$SR)
+
+#Modele nul
+M_SR_P_nul <- lm(SR ~ 1, data = table_plie_c)
+fonction_resume_plot_nul(tableau = table_plie_c, modele = M_SR_P_nul , SR = table_plie_c$SR)
+
+Anova(M_SR_P_8)
+Anova(M_SR_P_11)
+Anova(M_SR_P_c)
+```
+
+```{r}
+M_SR_P_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_plie_c, method = "ML")
+vif(M_SR_P_cgls)
+acf_pacf_gls_fonction(tableau = table_plie_c, modele = M_SR_P_cgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_P_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_plie_c, method = "ML")
+vif(M_SR_P_1gls)
+# + Sc_nb_area 
+M_SR_P_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_plie_c, method = "ML")
+vif(M_SR_P_2gls) # minimise le plus l'erreur sur la cohorte 
+acf_pacf_gls_fonction(tableau = table_plie_c, modele = M_SR_P_2gls)
+#+ Sc_age_moy
+M_SR_P_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_plie_c, method = "ML")
+vif(M_SR_P_3gls)
+
+#+ Sc_taille_moy
+M_SR_P_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_plie_c, method = "ML")
+vif(M_SR_P_4gls)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_P_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_plie_c, method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_P_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_plie_c, method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_P_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_plie_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_P_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_plie_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_P_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_plie_c, method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_P_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_plie_c, method = "ML")
+
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_P_11gls <- gls(SR ~ Sc_cohorte, data = table_plie_c, method = "ML")
+
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_P_12gls <- gls(SR ~ Sc_age_moy, data = table_plie_c, method = "ML")
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_P_13gls <- gls(SR ~  Sc_taille_moy, data = table_plie_c, method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_P_14gls <- gls(SR ~  Sc_nb_area, data = table_plie_c, method = "ML")
+
+################### Modele nul #####################################"
+M_SR_P_nulgls <- gls(SR ~ 1, data = table_plie_c, method = "ML")
+```
+
+```{r}
+AIC(M_SR_P_cgls)
+AIC(M_SR_P_1gls)
+AIC(M_SR_P_2gls)
+AIC(M_SR_P_3gls)
+AIC(M_SR_P_4gls)
+AIC(M_SR_P_5gls)#-150.371
+AIC(M_SR_P_6gls)
+AIC(M_SR_P_7gls)
+AIC(M_SR_P_8gls)#-150.8764
+AIC(M_SR_P_9gls)#-150.8253 ==> c'est l'âge qui explique le plus
+AIC(M_SR_P_10gls)
+AIC(M_SR_P_11gls)
+
+AIC(M_SR_P_12gls)# -152.2099
+AIC(M_SR_P_13gls)
+AIC(M_SR_P_14gls)
+AIC(M_SR_P_nulgls)#
+
+
+Anova(M_SR_P_12gls)
+Anova(M_SR_P_6gls)
+
+Anova(M_SR_P_8gls)#Sc_cohorte  1  0.6166     0.4323  
+vif(M_SR_P_8gls)#<1.5
+
+Anova(M_SR_P_10gls)
+Anova(M_SR_P_11gls)#Sc_cohorte  1 10.513   0.001185 ** AIC forte mais pente positive
+
+
+fonction_corr(table_plie_c) # la cohorte est bcp corrélée avec toutes les variables 
+vif(M_SR_P_10gls)
+sqrt(diag(vcov(M_SR_P_12gls)))
+
+o_p <- lm(predict(M_SR_P_12gls) ~ table_plie_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_plie_c$SR"]]
+   ggplot(table_plie_c, aes(x = SR , y = predict(M_SR_P_12gls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Plie", subtitle = "sans selection a priori") 
+   
+fonction_resume_plot(tableau = table_plie_c, modele = M_SR_P_c, SR = table_plie_c$SR)
+```
+
+```{r}
+remove(M_SR_P_c, M_SR_P_1, M_SR_P_2, M_SR_P_3, M_SR_P_4, M_SR_P_5, M_SR_P_6, M_SR_P_7, M_SR_P_8, M_SR_P_9, M_SR_P_10, M_SR_P_11, M_SR_P_12, M_SR_P_13, M_SR_P_14, M_SR_P_nul)
+#remove(M_SR_P_cgls, M_SR_P_1gls, M_SR_P_2gls, M_SR_P_3gls, M_SR_P_4gls, M_SR_P_5gls, M_SR_P_6gls, M_SR_P_7gls, M_SR_P_8gls, M_SR_P_9gls, M_SR_P_10gls, M_SR_P_11gls, M_SR_P_12gls, M_SR_P_13gls, M_SR_P_14gls, M_SR_P_nulgls)
+```
+
+*Lieu*
+```{r, include=FALSE}
+table_lieu_c <- filter(tableau_cohortes, Species == "Pollachius virens")
+table_lieu_c <- fonction_scale_c(tableau = table_lieu_c)
+fonction_corr(tableau = table_lieu_c)
+#table_lieu_c <- table_lieu_c[-c(1),]#,30
+
+#############################  Modèle complet #####################################
+M_SR_L_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_c , SR = table_lieu_c$SR)
+vif(M_SR_L_c)
+grubbs.test(residuals(M_SR_L_c))
+grubbs.test(residuals(M_SR_L_c), type = 10)
+rosnerTest(residuals(M_SR_L_c), k = 5)
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_L_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_1 , SR = table_lieu_c$SR)
+
+# + Sc_nb_area 
+M_SR_L_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_2 , SR = table_lieu_c$SR)
+
+#+ Sc_age_moy
+M_SR_L_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_3 , SR = table_lieu_c$SR)
+
+#+ Sc_taille_moy
+M_SR_L_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_4 , SR = table_lieu_c$SR)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_L_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_5 , SR = table_lieu_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_L_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_6 , SR = table_lieu_c$SR)
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_L_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_7 , SR = table_lieu_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_L_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_8 , SR = table_lieu_c$SR)
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_L_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_9 , SR = table_lieu_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_L_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_lieu_c) 
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_10 , SR = table_lieu_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_L_11 <- lm(SR ~ Sc_cohorte, data = table_lieu_c) 
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_11 , SR = table_lieu_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_L_12 <- lm(SR ~  Sc_age_moy, data = table_lieu_c) 
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_12 , SR = table_lieu_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_L_13 <- lm(SR ~  Sc_taille_moy, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_13 , SR = table_lieu_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_L_14 <- lm(SR ~  Sc_nb_area, data = table_lieu_c)
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_14 , SR = table_lieu_c$SR)
+
+#Modele nul
+M_SR_L_nul <- lm(SR ~ 1, data = table_lieu_c)
+fonction_resume_plot_nul(tableau = table_lieu_c, modele = M_SR_L_nul , SR = table_lieu_c$SR)
+```
+
+```{r}
+M_SR_L_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_lieu_c)# 
+M_SR_L_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_lieu_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 8))#, method = "ML")
+#M_SR_L_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_lieu_c, correlation = corARMA(form = ~ Cohorte, p = 9, q = 4))#, method = "ML"
+#M_SR_L_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_lieu_c, correlation = corARMA(form = ~ Cohorte, p = 10, q = 4))#, method = "ML"
+#M_SR_L_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_lieu_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 4))#, method = "ML"
+AIC(M_SR_L_cgls)
+acf_pacf_gls_fonction(tableau = table_lieu_c, modele = M_SR_L_cgls)
+
+
+M_SR_L_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+AIC(M_SR_L_cgls)
+vif(M_SR_L_cgls)
+acf_pacf_gls_fonction(tableau = table_lieu_c, modele = M_SR_L_cgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_L_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+vif(M_SR_L_1gls)
+# + Sc_nb_area 
+M_SR_L_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+vif(M_SR_L_2gls) # minimise le plus l'erreur sur la cohorte 
+acf_pacf_gls_fonction(tableau = table_lieu_c, modele = M_SR_L_2gls)
+#+ Sc_age_moy
+M_SR_L_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_lieu_c,correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+vif(M_SR_L_3gls)
+
+#+ Sc_taille_moy
+M_SR_L_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+vif(M_SR_L_4gls)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_L_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_L_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_L_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+#+ Sc_taille_moy  + Sc_nb_area 
+#M_SR_L_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_L_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_L_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_L_11gls <- gls(SR ~ Sc_cohorte, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+#M_SR_L_12gls <- gls(SR ~ Sc_age_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_L_13gls <- gls(SR ~  Sc_taille_moy, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+#M_SR_L_14gls <- gls(SR ~  Sc_nb_area, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+
+################### Modele nul #####################################"
+M_SR_L_nulgls <- gls(SR ~ 1, data = table_lieu_c, correlation = corARMA(form = ~ Cohorte,p = 0 , q = 8), method = "ML")
+```
+
+
+```{r}
+
+AIC(M_SR_L_nulgls) 
+
+AIC(M_SR_L_cgls)
+vif(M_SR_L_cgls)#
+AIC(M_SR_L_1gls)
+AIC(M_SR_L_2gls)
+AIC(M_SR_L_3gls)
+AIC(M_SR_L_4gls)
+AIC(M_SR_L_5gls)
+AIC(M_SR_L_6gls) 
+AIC(M_SR_L_7gls)
+#AIC(M_SR_L_8gls) 
+AIC(M_SR_L_9gls) 
+AIC(M_SR_L_10gls) #
+AIC(M_SR_L_11gls) 
+#AIC(M_SR_L_12gls)
+AIC(M_SR_L_13gls)
+#AIC(M_SR_L_14gls)# 
+
+Anova(M_SR_L_cgls) #Sc_cohorte     1 21.907  2.862e-06 ***
+vif(M_SR_L_cgls)
+Anova(M_SR_L_1gls) 
+Anova(M_SR_L_2gls) #Sc_cohorte     1 19.291  1.122e-05 ***
+vif(M_SR_L_2gls)
+Anova(M_SR_L_10gls) #Sc_cohorte  1  4.3781     0.0364 *  
+vif(M_SR_L_1gls)# inferieur à 1.5
+Anova(M_SR_L_cgls) 
+#Anova(M_SR_L_14gls) 
+
+sqrt(diag(vcov(M_SR_L_cgls)))
+
+M_SR_L_c
+fonction_resume_plot(table_lieu_c, M_SR_L_c, table_lieu_c$SR)
+fonction_corr(table_lieu_c)
+
+
+
+o_p <- lm(predict(M_SR_L_cgls) ~ table_lieu_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_lieu_c$SR"]]
+   ggplot(table_lieu_c, aes(x = SR , y = predict(M_SR_L_cgls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Lieu", subtitle = "sans selection a priori") 
+   
+fonction_resume_plot(tableau = table_lieu_c, modele = M_SR_L_c, SR = table_lieu_c$SR)
+```
+
+```{r}
+remove(M_SR_L_c, M_SR_L_1, M_SR_L_2, M_SR_L_3, M_SR_L_4, M_SR_L_5, M_SR_L_6, M_SR_L_7, M_SR_L_8, M_SR_L_9, M_SR_L_10, M_SR_L_11, M_SR_L_12, M_SR_L_13, M_SR_L_14, M_SR_L_nul)
+#remove(M_SR_L_cgls, M_SR_L_1gls, M_SR_L_2gls, M_SR_L_3gls, M_SR_L_4gls, M_SR_L_5gls, M_SR_L_6gls, M_SR_L_7gls, M_SR_L_8gls, M_SR_L_9gls, M_SR_L_10gls, M_SR_L_11gls, M_SR_L_12gls, M_SR_L_13gls, M_SR_L_14gls, M_SR_L_nulgls)
+```
+
+```{r, include=FALSE}
+table_maquereau_c <- filter(tableau_cohortes, Species == "Scomber scombrus")
+table_maquereau_c <- fonction_scale_c(tableau = table_maquereau_c)
+fonction_corr(tableau = table_maquereau_c)
+#table_maquereau_c <- table_maquereau_c[-c(2, 5),]#9
+
+#############################  Modèle complet #####################################
+M_SR_Ma_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_c , SR = table_maquereau_c$SR)
+vif(M_SR_Ma_c)
+
+grubbs.test(residuals(M_SR_Ma_c))
+grubbs.test(residuals(M_SR_Ma_c), type = 10)
+rosnerTest(residuals(M_SR_Ma_c), k = 10)
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_Ma_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_1 , SR = table_maquereau_c$SR)
+vif(M_SR_Ma_1)
+# + Sc_nb_area 
+M_SR_Ma_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_2 , SR = table_maquereau_c$SR)
+vif(M_SR_Ma_2)
+#+ Sc_age_moy
+M_SR_Ma_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_3 , SR = table_maquereau_c$SR)
+vif(M_SR_Ma_3)
+#+ Sc_taille_moy
+M_SR_Ma_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_4 , SR = table_maquereau_c$SR)
+vif(M_SR_Ma_4)
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_Ma_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_5 , SR = table_maquereau_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_Ma_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_6 , SR = table_maquereau_c$SR)
+vif(M_SR_Ma_6)
+# + Sc_age_moy + Sc_cohorte
+M_SR_Ma_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_7 , SR = table_maquereau_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_Ma_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_8 , SR = table_maquereau_c$SR)
+vif(M_SR_Ma_8)
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_Ma_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_9 , SR = table_maquereau_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_Ma_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_maquereau_c) 
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_10 , SR = table_maquereau_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_Ma_11 <- lm(SR ~ Sc_cohorte, data = table_maquereau_c) 
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_11 , SR = table_maquereau_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_Ma_12 <- lm(SR ~  Sc_age_moy, data = table_maquereau_c) 
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_12 , SR = table_maquereau_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_Ma_13 <- lm(SR ~  Sc_taille_moy, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_13 , SR = table_maquereau_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_Ma_14 <- lm(SR ~  Sc_nb_area, data = table_maquereau_c)
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_14 , SR = table_maquereau_c$SR)
+
+#Modele nul
+M_SR_Ma_nul <- lm(SR ~ 1, data = table_maquereau_c)
+fonction_resume_plot_nul(tableau = table_maquereau_c, modele = M_SR_Ma_nul , SR = table_maquereau_c$SR)
+```
+
+
+```{r}
+########################### Modèle complet gls ##########################################
+#M_SR_Ma_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_maquereau_c)#29.56692   -45.91075
+
+
+M_SR_Ma_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_maquereau_c)
+M_SR_Ma_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_maquereau_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1), method = "ML")
+AIC(M_SR_Ma_cgls)
+acf_pacf_gls_fonction(tableau = table_maquereau_c, modele = M_SR_Ma_cgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_Ma_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+# + Sc_nb_area 
+M_SR_Ma_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1)) 
+#+ Sc_age_moy
+M_SR_Ma_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+#+ Sc_taille_moy
+M_SR_Ma_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_Ma_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_Ma_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_Ma_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_Ma_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_Ma_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_Ma_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_Ma_11gls <- gls(SR ~ Sc_cohorte, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_Ma_12gls <- gls(SR ~ Sc_age_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_Ma_13gls <- gls(SR ~  Sc_taille_moy, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_Ma_14gls <- gls(SR ~  Sc_nb_area, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+
+################### Modele nul #####################################"
+M_SR_Ma_nulgls <- gls(SR ~ 1, data = table_maquereau_c, method = "ML", correlation = corARMA(form = ~ Cohorte, p = 0, q = 1))
+```
+
+
+```{r}
+AIC(M_SR_Ma_nulgls) 
+AIC(M_SR_Ma_cgls)#Sc_cohorte     1  6.8004  0.0091136 ** 
+AIC(M_SR_Ma_1gls)
+AIC(M_SR_Ma_2gls)
+AIC(M_SR_Ma_3gls)
+AIC(M_SR_Ma_4gls)# Sc_cohorte  1 3.6852   0.054897 .
+
+AIC(M_SR_Ma_5gls) 
+AIC(M_SR_Ma_6gls) 
+AIC(M_SR_Ma_7gls) 
+AIC(M_SR_Ma_8gls) 
+AIC(M_SR_Ma_9gls) 
+AIC(M_SR_Ma_10gls)# Sc_cohorte  1  3.2721   0.070467 .
+AIC(M_SR_Ma_11gls)#Sc_cohorte  1 2.9869    0.08394 . AIC fort 
+AIC(M_SR_Ma_12gls)
+AIC(M_SR_Ma_13gls) 
+AIC(M_SR_Ma_14gls) #
+
+Anova(M_SR_Ma_10gls)
+# pas d'effet cohorte
+fonction_corr(table_maquereau_c)
+vif(M_SR_Ma_4)
+
+sqrt(diag(vcov(M_SR_Ma_10gls)))
+
+#Effet cohorte positif...
+
+o_p <- lm(predict(M_SR_Ma_10gls) ~ table_maquereau_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_maquereau_c$SR"]]
+   ggplot(table_maquereau_c, aes(x = SR , y = predict(M_SR_Ma_10gls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Lieu", subtitle = "sans selection a priori") 
+   
+fonction_resume_plot(tableau = table_maquereau_c, modele = M_SR_Ma_c, SR = table_maquereau_c$SR)
+```
+
+```{r}
+remove(M_SR_Ma_c, M_SR_Ma_1, M_SR_Ma_2, M_SR_Ma_3, M_SR_Ma_4, M_SR_Ma_5, M_SR_Ma_6, M_SR_Ma_7, M_SR_Ma_8, M_SR_Ma_9, M_SR_Ma_10, M_SR_Ma_11, M_SR_Ma_12, M_SR_Ma_13, M_SR_Ma_14, M_SR_Ma_nul)
+#remove(M_SR_Ma_cgls, M_SR_Ma_1gls, M_SR_Ma_2gls, M_SR_Ma_3gls, M_SR_Ma_4gls, M_SR_Ma_5gls, M_SR_Ma_6gls, M_SR_Ma_7gls, M_SR_Ma_8gls, M_SR_Ma_9gls, M_SR_Ma_10gls, M_SR_Ma_11gls, M_SR_Ma_12gls, M_SR_Ma_13gls, M_SR_Ma_14gls, M_SR_Ma_nulgls)
+```
+
+```{r, include=FALSE}
+table_sprat_c <- filter(tableau_cohortes, Species == "Sprattus sprattus")
+table_sprat_c <- fonction_scale_c(tableau = table_sprat_c)
+fonction_corr(tableau = table_sprat_c)
+table_sprat_c <- table_sprat_c[-c(13, 12),]#, 12 enlevé sur la base du plot
+
+#############################  Modèle complet #####################################
+M_SR_S_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_c , SR = table_sprat_c$SR)
+vif(M_SR_S_c)
+grubbs.test(residuals(M_SR_S_c), type = 10)
+rosnerTest(residuals(M_SR_S_c), k = 10)
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_S_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_1 , SR = table_sprat_c$SR)
+
+# + Sc_nb_area 
+M_SR_S_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_2 , SR = table_sprat_c$SR)
+
+#+ Sc_age_moy
+M_SR_S_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_3 , SR = table_sprat_c$SR)
+
+#+ Sc_taille_moy
+M_SR_S_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_4 , SR = table_sprat_c$SR)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_S_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_5 , SR = table_sprat_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_S_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_6 , SR = table_sprat_c$SR)
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_S_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_7 , SR = table_sprat_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_S_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_8 , SR = table_sprat_c$SR)
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_S_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_9 , SR = table_sprat_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_S_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_sprat_c) 
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_10 , SR = table_sprat_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_S_11 <- lm(SR ~ Sc_cohorte, data = table_sprat_c) 
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_11 , SR = table_sprat_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_S_12 <- lm(SR ~  Sc_age_moy, data = table_sprat_c) 
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_12 , SR = table_sprat_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_S_13 <- lm(SR ~  Sc_taille_moy, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_13 , SR = table_sprat_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_S_14 <- lm(SR ~  Sc_nb_area, data = table_sprat_c)
+fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_14 , SR = table_sprat_c$SR)
+
+#Modele nul
+M_SR_S_nul <- lm(SR ~ 1, data = table_sprat_c)
+fonction_resume_plot_nul(tableau = table_sprat_c, modele = M_SR_S_nul , SR = table_sprat_c$SR)
+```
+
+```{r}
+
+#############################  Modèle complet #####################################
+M_SR_S_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_sprat_c)
+M_SR_S_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+#M_SR_S_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 10, q = 1))
+#acf_pacf_gls_fonction(tableau = table_sprat_c, modele = M_SR_S_cgls)#-115.4882  REML : 63.74408
+AIC(M_SR_S_cgls)
+acf_pacf_gls_fonction(tableau = table_sprat_c, modele = M_SR_S_cgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_S_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+# + Sc_nb_area 
+M_SR_S_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+#+ Sc_age_moy
+M_SR_S_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+#+ Sc_taille_moy
+M_SR_S_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_S_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_S_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_S_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_S_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_S_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_S_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_S_11gls <- gls(SR ~ Sc_cohorte, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_S_12gls <- gls(SR ~  Sc_age_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_S_13gls <- gls(SR ~  Sc_taille_moy, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_S_14gls <- gls(SR ~  Sc_nb_area, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+
+#Modele nul
+M_SR_S_nulgls <- gls(SR ~ 1, data = table_sprat_c, correlation = corARMA(form = ~ Cohorte, p = 11, q = 0), method = "ML")
+```
+
+
+```{r}
+vif(M_SR_S_cgls)
+ 
+
+AIC(M_SR_S_cgls)# pente positive #Sc_cohorte     1 10.2741   0.001349 ** 
+AIC(M_SR_S_1gls)#
+AIC(M_SR_S_2gls)#pente négative
+
+
+AIC(M_SR_S_3gls)#pente positive
+AIC(M_SR_S_4gls)#Sc_cohorte  1 12.394  0.0004308 ***  pente positive
+
+AIC(M_SR_S_5gls) 
+AIC(M_SR_S_6gls)
+AIC(M_SR_S_7gls)
+AIC(M_SR_S_8gls) 
+AIC(M_SR_S_9gls) 
+AIC(M_SR_S_10gls) 
+AIC(M_SR_S_11gls) 
+AIC(M_SR_S_12gls)
+AIC(M_SR_S_13gls) 
+AIC(M_SR_S_14gls) 
+AIC(M_SR_S_nulgls) 
+
+Anova(M_SR_S_4gls)
+Anova(M_SR_S_cgls)
+sqrt(diag(vcov(M_SR_S_4gls)))
+vif(M_SR_S_4gls)
+
+#pente positive ou négative selon les modèles avec effet significatif
+
+
+o_p <- lm(predict(M_SR_S_4gls) ~ table_sprat_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_sprat_c$SR"]]
+   ggplot(table_sprat_c, aes(x = SR , y = predict(M_SR_S_4gls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Sprat", subtitle = "sans selection a priori") 
+
+   fonction_resume_plot(tableau = table_sprat_c, modele = M_SR_S_c, SR = table_sprat_c$SR)
+```
+
+```{r}
+remove(M_SR_S_c, M_SR_S_1, M_SR_S_2, M_SR_S_3, M_SR_S_4, M_SR_S_5, M_SR_S_6, M_SR_S_7, M_SR_S_8, M_SR_S_9, M_SR_S_10, M_SR_S_11, M_SR_S_12, M_SR_S_13, M_SR_S_14, M_SR_S_nul)
+#remove(M_SR_S_cgls, M_SR_S_1gls, M_SR_S_2gls, M_SR_S_3gls, M_SR_S_4gls, M_SR_S_5gls, M_SR_S_6gls, M_SR_S_7gls, M_SR_S_8gls, M_SR_S_9gls, M_SR_S_10gls, M_SR_S_11gls, M_SR_S_12gls, M_SR_S_13gls, M_SR_S_14gls, M_SR_S_nulgls)
+```
+
+```{r, include=FALSE}
+table_tacaud_c <- filter(tableau_cohortes, Species == "Trisopterus esmarkii")
+table_tacaud_c <- fonction_scale_c(tableau = table_tacaud_c)
+fonction_corr(tableau = table_tacaud_c)
+table_tacaud_c<- table_tacaud_c[-c(2),] #40, 24, 5, 7, 14
+
+#############################  Modèle complet #####################################
+M_SR_T_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_c , SR = table_tacaud_c$SR)
+vif(M_SR_T_c)
+
+grubbs.test(residuals(M_SR_T_c))
+grubbs.test(residuals(M_SR_T_c), type = 11)
+rosnerTest(residuals(M_SR_T_c), k = 10)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_T_1 <- lm(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_1 , SR = table_tacaud_c$SR)
+
+# + Sc_nb_area 
+M_SR_T_2 <- lm(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_2 , SR = table_tacaud_c$SR)
+
+#+ Sc_age_moy
+M_SR_T_3 <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_3 , SR = table_tacaud_c$SR)
+
+#+ Sc_taille_moy
+M_SR_T_4 <- lm(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_4 , SR = table_tacaud_c$SR)
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_T_5 <- lm(SR ~ Sc_taille_moy + Sc_age_moy, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_5 , SR = table_tacaud_c$SR)
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_T_6 <- lm(SR ~ Sc_cohorte + Sc_taille_moy, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_6 , SR = table_tacaud_c$SR)
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_T_7 <- lm(SR ~  Sc_nb_area + Sc_taille_moy, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_7 , SR = table_tacaud_c$SR)
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_T_8 <- lm(SR ~ Sc_cohorte + Sc_age_moy, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_8 , SR = table_tacaud_c$SR)
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_T_9 <- lm(SR ~  Sc_nb_area + Sc_age_moy, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_9 , SR = table_tacaud_c$SR)
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_T_10 <- lm(SR ~ Sc_cohorte + Sc_nb_area  , data = table_tacaud_c) 
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_10 , SR = table_tacaud_c$SR)
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_T_11 <- lm(SR ~ Sc_cohorte, data = table_tacaud_c) 
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_11 , SR = table_tacaud_c$SR)
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_T_12 <- lm(SR ~  Sc_age_moy, data = table_tacaud_c) 
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_12 , SR = table_tacaud_c$SR)
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_T_13 <- lm(SR ~  Sc_taille_moy, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_13 , SR = table_tacaud_c$SR)
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_T_14 <- lm(SR ~  Sc_nb_area, data = table_tacaud_c)
+fonction_resume_plot(tableau = table_tacaud_c, modele = M_SR_T_14 , SR = table_tacaud_c$SR)
+
+#Modele nul
+M_SR_T_nul <- lm(SR ~ 1, data = table_tacaud_c)
+fonction_resume_plot_nul(tableau = table_tacaud_c, modele = M_SR_T_nul , SR = table_tacaud_c$SR)
+```
+Prédit mal
+
+```{r}
+#############################  Modèle complet #####################################
+M_SR_T_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_tacaud_c)
+#acf_pacf_gls_fonction(tableau = table_tacaud_c, modele = M_SR_T_cgls)#-115.4882  REML : 63.74408
+M_SR_T_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_tacaud_c, method = "ML")
+AIC(M_SR_T_cgls)
+#M_SR_T_cgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_tacaud_c, correlation = corARMA(form = ~Cohorte, p = 8, q = 5), method = "ML")
+acf_pacf_gls_fonction(tableau = table_tacaud_c, modele = M_SR_T_cgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_T_1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_tacaud_c,  method = "ML")
+
+# + Sc_nb_area 
+M_SR_T_2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_tacaud_c, method = "ML")
+
+#+ Sc_age_moy
+M_SR_T_3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_tacaud_c, method = "ML")
+
+#+ Sc_taille_moy
+M_SR_T_4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_tacaud_c, method = "ML")
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_T_5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_tacaud_c, method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_T_6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_tacaud_c,  method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_T_7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_tacaud_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_T_8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_tacaud_c, method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_T_9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_tacaud_c, method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_T_10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_tacaud_c, method = "ML")
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_T_11gls <- gls(SR ~ Sc_cohorte, data = table_tacaud_c,  method = "ML")
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_T_12gls <- gls(SR ~  Sc_age_moy, data = table_tacaud_c, method = "ML")
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_T_13gls <- gls(SR ~  Sc_taille_moy, data = table_tacaud_c, method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_T_14gls <- gls(SR ~  Sc_nb_area, data = table_tacaud_c,  method = "ML")
+
+#Modele nul
+M_SR_T_nulgls <- gls(SR ~ 1, data = table_tacaud_c,  method = "ML")
+```
+
+
+```{r}
+AIC(M_SR_T_nulgls)
+AIC(M_SR_T_cgls)
+AIC(M_SR_T_1gls)
+AIC(M_SR_T_2gls)#
+AIC(M_SR_T_3gls)
+AIC(M_SR_T_4gls)
+
+AIC(M_SR_T_5gls) #
+AIC(M_SR_T_6gls)
+AIC(M_SR_T_7gls)
+AIC(M_SR_T_8gls)#-177.5886    Sc_cohorte  1  3.716    0.05389 . pente négative
+AIC(M_SR_T_9gls)#
+AIC(M_SR_T_10gls)
+AIC(M_SR_T_11gls) 
+AIC(M_SR_T_12gls) 
+AIC(M_SR_T_13gls) 
+AIC(M_SR_T_14gls) 
+
+Anova(M_SR_T_8gls)
+vif(M_SR_T_8gls)
+sqrt(diag(vcov(M_SR_T_8gls)))
+
+#La cohorte a toujours une pente négative
+
+
+o_p <- lm(predict(M_SR_T_8gls) ~ table_tacaud_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_tacaud_c$SR"]]
+   ggplot(table_tacaud_c, aes(x = SR , y = predict(M_SR_T_8gls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Tacaud", subtitle = "sans selection a priori") 
+   
+fonction_resume_plot(tableau = table_tacaud_c, SR = table_tacaud_c$SR, modele = M_SR_T_c)
+```
+
+```{r}
+remove(M_SR_T_c, M_SR_T_1, M_SR_T_2, M_SR_T_3, M_SR_T_4, M_SR_T_5, M_SR_T_6, M_SR_T_7, M_SR_T_8, M_SR_T_9, M_SR_T_10, M_SR_T_11, M_SR_T_12, M_SR_T_13, M_SR_T_14, M_SR_T_nul)
+```
+
+
+Limande-sole ==> poisson plat
+```{r}
+table_LS_c <- filter(tableau_cohortes, Species == "Microstomus kitt")
+table_LS_c <- fonction_scale_c(tableau = table_LS_c)
+fonction_corr(tableau = table_LS_c)
+
+#############################  Modèle complet #####################################
+M_SR_LS_c <- lm(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_LS_c)
+fonction_resume_plot(tableau = table_LS_c, modele = M_SR_LS_c , SR = table_LS_c$SR)
+vif(M_SR_LS_c)
+
+grubbs.test(residuals(M_SR_LS_c))
+grubbs.test(residuals(M_SR_LS_c), type = 11)
+rosnerTest(residuals(M_SR_LS_c), k = 10)
+```
+
+```{r}
+#############################  Modèle complet #####################################
+M_SR_LScgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1), method = "ML")
+M_SR_LScgls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy + Sc_age_moy , data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1), method = "ML")
+AIC(M_SR_LScgls)
+
+acf_pacf_gls_fonction(tableau = table_LS_c, modele = M_SR_LScgls)
+
+########################### 3 variables explicatives ###############################
+# Sc_cohorte +
+M_SR_LS1gls <- gls(SR ~ Sc_nb_area + Sc_taille_moy + Sc_age_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+# + Sc_nb_area 
+M_SR_LS2gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy + Sc_age_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+#+ Sc_age_moy
+M_SR_LS3gls <- gls(SR ~ Sc_cohorte + Sc_nb_area + Sc_taille_moy  , data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+#+ Sc_taille_moy
+M_SR_LS4gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  + Sc_age_moy , data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1), method = "ML")
+
+##################### 2 Variables explicatives ####################################
+# + Sc_nb_area  + Sc_cohorte + 
+M_SR_LS5gls <- gls(SR ~ Sc_taille_moy + Sc_age_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+# + Sc_age_moy + Sc_nb_area
+M_SR_LS6gls <- gls(SR ~ Sc_cohorte + Sc_taille_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),   method = "ML")
+
+# + Sc_age_moy + Sc_cohorte
+M_SR_LS7gls <- gls(SR ~  Sc_nb_area + Sc_taille_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+#+ Sc_taille_moy  + Sc_nb_area 
+M_SR_LS8gls <- gls(SR ~ Sc_cohorte + Sc_age_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+#+ Sc_taille_moy  + Sc_cohorte 
+M_SR_LS9gls <- gls(SR ~  Sc_nb_area + Sc_age_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+#+ Sc_taille_moy + Sc_age_moy
+M_SR_LS10gls <- gls(SR ~ Sc_cohorte + Sc_nb_area  , data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+####################### 1 Variable explicative #################################
+#+ Sc_taille_moy + Sc_age_moy + Sc_nb_area 
+M_SR_LS11gls <- gls(SR ~ Sc_cohorte, data = table_LS_c,  correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+# + Sc_nb_area + Sc_cohorte + Sc_taille_moy +
+M_SR_LS12gls <- gls(SR ~  Sc_age_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+# + Sc_nb_area + Sc_cohorte +  Sc_age_moy
+M_SR_LS13gls <- gls(SR ~  Sc_taille_moy, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1), method = "ML")
+
+# + Sc_cohorte + Sc_age_moy  + Sc_taille_moy
+M_SR_LS14gls <- gls(SR ~  Sc_nb_area, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+
+#Modele nul
+M_SR_LSnulgls <- gls(SR ~ 1, data = table_LS_c, correlation = corARMA(form = ~ Cohorte, p = 0, q = 1),  method = "ML")
+```
+```{r}
+AIC(M_SR_LScgls)
+vif(M_SR_LScgls)
+AIC(M_SR_LS1gls)#
+AIC(M_SR_LS2gls)#
+AIC(M_SR_LS3gls)
+AIC(M_SR_LS4gls)
+AIC(M_SR_LS5gls)#
+AIC(M_SR_LS6gls)
+AIC(M_SR_LS7gls)
+AIC(M_SR_LS8gls)
+AIC(M_SR_LS9gls)
+AIC(M_SR_LS10gls)
+AIC(M_SR_LS11gls)
+AIC(M_SR_LS12gls)
+AIC(M_SR_LS13gls)
+AIC(M_SR_LS14gls)
+AIC(M_SR_LSnulgls)
+Anova(M_SR_LS5gls)
+vif(M_SR_LS5gls)
+
+o_p <- lm(predict(M_SR_LS5gls) ~ table_LS_c$SR)
+  ordonne_origine <- o_p[["coefficients"]][["(Intercept)"]]
+  pente <- o_p[["coefficients"]][["table_LS_c$SR"]]
+   ggplot(table_LS_c, aes(x = SR , y = predict(M_SR_LS5gls))) +
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, colour = "#003399") +
+    geom_abline(intercept = ordonne_origine, slope = pente, colour = "#006633") +
+    theme_classic() +
+    ylab("predictions du modèle ") +
+    xlab("observations du SR") +
+     ylim(0, 1) +
+     xlim(0 , 1) +
+     ggtitle("observations vs predictions meilleur modèle Limande-Sole", subtitle = "sans selection a priori")
+   
+sqrt(diag(vcov(M_SR_LS5gls)))
+
+fonction_resume_plot(tableau = table_LS_c, modele = M_SR_LS_c, SR = table_LS_c$SR)
+```
+
+```{r}
+
+sqrt(diag(vcov(M_SR_A_cgls)))
+sqrt(diag(vcov(M_SR_H_cgls)))
+sqrt(diag(vcov(M_SR_L_cgls)))
+sqrt(diag(vcov(M_SR_Ma_cgls)))
+sqrt(diag(vcov(M_SR_Me_cgls)))
+sqrt(diag(vcov(M_SR_Mo_cgls)))
+sqrt(diag(vcov(M_SR_P_cgls)))
+sqrt(diag(vcov(M_SR_S_cgls)))
+sqrt(diag(vcov(M_SR_T_cgls)))
+sqrt(diag(vcov(M_SR_LScgls)))
+
+
+AIC(M_SR_L_cgls)
+AIC(M_SR_L_1gls)
+AIC(M_SR_L_2gls)
+AIC(M_SR_L_3gls)
+AIC(M_SR_L_4gls)
+AIC(M_SR_L_5gls) 
+AIC(M_SR_L_6gls)
+AIC(M_SR_L_7gls)
+AIC(M_SR_L_8gls) 
+AIC(M_SR_L_9gls) 
+AIC(M_SR_L_10gls) 
+AIC(M_SR_L_11gls) 
+AIC(M_SR_L_12gls)
+AIC(M_SR_L_13gls) 
+AIC(M_SR_L_14gls) 
+AIC(M_SR_L_nulgls) 
+
+
+Anova(M_SR_T_cgls)#
+Anova(M_SR_T_2gls)#
+Anova(M_SR_T_3gls)##
+Anova(M_SR_T_4gls)##
+Anova(M_SR_T_6gls)
+Anova(M_SR_T_8gls)
+Anova(M_SR_T_10gls)##
+Anova(M_SR_T_11gls)##
+
+vif(M_SR_A_7gls)
+```
+
+
+```{r, fig.height=10, fig.width=18}
+library(patchwork) 
+library(hrbrthemes)
+
+##Figure
+H<-ggplot(data = table_hareng_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Hareng", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+A<-ggplot(data = table_aiglefin_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Aiglefin", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+L<- ggplot(data = table_lieu_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Lieu noir", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+Ma<-ggplot(data = table_maquereau_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Maquereau", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+Me<- ggplot(data = table_merlan_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Merlan", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+Mo<-ggplot(data = table_morue_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Morue", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+P<-ggplot(data = table_plie_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Plie commune", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+S<-ggplot(data = table_sprat_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Sprat", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+Ta<-ggplot(data = table_tacaud_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999") +
+  labs(title="Tacaud norvégien", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+plot_sp <- H + A + L + Ma + Me + Mo + P + S + Ta
+ggsave("plot_sp.png", plot = plot_sp, width = 18, height = 10)
+
+```
+
+
+```{r, fig.width= 15, fig.height=6}
+#install.packages('palettetown')
+library(palettetown)
+#voir les palettes de couleur
+#pokedex(cb = 1)
+
+#pokedex(50:60)
+#golbat
+#vaporeon
+#Charizard
+#nidoking
+#wigglytuff
+
+#sr <- ggplot(tableau_cohortes, aes(x = Cohorte, y = SR, group = Species)) +
+#  geom_point() +
+#  geom_line() +
+#  scale_fill_poke(pokemon = "vaporeon" , spread = 10) +
+#  facet_wrap(~ Species, ncol = 1) 
+
+#eff <- ggplot(tableau_cohortes, aes(x = Cohorte, y = Effectifs, group = Species)) +
+#  geom_bar(aes(fill = Species), stat = "identity", show.legend = FALSE, width = 0.9, color = "black") +
+#  facet_wrap(~ Species, ncol = 1, scales = "free") +
+#  labs(y = "Effectifs", x = "Cohorte") +
+#  scale_fill_poke(pokemon = "vaporeon" , spread = 10) +
+#  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2)
+
+#plot_sr_eff <- sr + eff
+
+
+H_sr <- ggplot(data = table_hareng_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339966",  formula = 'y ~ x') +
+  labs(title = "Hareng", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339966"))
+
+H_eff <- ggplot(data = table_hareng_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#339966") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+H <- H_sr + H_eff + plot_layout(nrow = 1)
+
+####
+A_sr <- ggplot(data = table_aiglefin_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#99CC33",  formula = 'y ~ x') +
+  labs(title = "Aiglefin", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#99CC33"))
+
+A_eff <- ggplot(data = table_aiglefin_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#99CC33") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+A <- A_sr + A_eff 
+####
+Mo_sr <- ggplot(data = table_morue_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#FFCC33",  formula = 'y ~ x') +
+  labs(title = "Morue", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#FFCC33"))
+
+Mo_eff <- ggplot(data = table_morue_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#FFCC33") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+Mo <- Mo_sr + Mo_eff 
+###
+Me_sr <- ggplot(data = table_merlan_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#993300",  formula = 'y ~ x') +
+  labs(title = "Merlan", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#993300"))
+
+Me_eff <- ggplot(data = table_merlan_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#993300") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+Me <- Me_sr + Me_eff 
+####
+P_sr <- ggplot(data = table_plie_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#990033",  formula = 'y ~ x') +
+  labs(title = "Plie", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#990033"))
+
+P_eff <- ggplot(data = table_plie_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#990033") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+P <- P_sr + P_eff 
+####
+L_sr <- ggplot(data = table_lieu_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#990099",  formula = 'y ~ x') +
+  labs(title = "Lieu", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#990099"))
+
+L_eff <- ggplot(data = table_lieu_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#990099") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+L <- L_sr + L_eff 
+####
+Ma_sr <- ggplot(data = table_maquereau_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#9933FF",  formula = 'y ~ x') +
+  labs(title = "Maquereau", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#9933FF"))
+
+Ma_eff <- ggplot(data = table_maquereau_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#9933FF") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+Ma <- Ma_sr + Ma_eff 
+####
+S_sr <- ggplot(data = table_sprat_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#0066CC",  formula = 'y ~ x') +
+  labs(title = "Sprat", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#0066CC"))
+
+S_eff <- ggplot(data = table_sprat_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#0066CC") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+S <- S_sr + S_eff 
+
+######
+
+ta_sr <- ggplot(data = table_tacaud_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#339999",  formula = 'y ~ x') +
+  labs(title = "Tacaud norvégien", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#339999"))
+
+ta_eff <- ggplot(data = table_tacaud_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#339999") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+TA <- ta_sr + ta_eff 
+
+
+######
+
+ls_sr <- ggplot(data = table_LS_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95, colour = "#66CC99", formula = 'y ~ x') +
+  labs(title = "Limande - sole", x ="Cohorte", y = "Sexe ratio") +
+  theme_classic() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5, size = 18, color = "#66CC99"))
+
+ls_eff <- ggplot(data = table_LS_c, aes(x = Cohorte, y = Effectifs)) +
+  geom_bar(stat = "identity", show.legend = FALSE, width = 0.9, color = "black", fill = "#66CC99") +
+  geom_text(aes(label = Effectifs), stat = "identity", vjust = -1 , size = 2) +
+  theme_classic() 
+LS <- ls_sr + ls_eff
+```
+
+
+```{r, fig.width= 15, fig.height=25}
+plot_sp_sr_eff <- H + A + Mo + Me + P + L + Ma + S + TA + LS + plot_layout(nrow = 10)
+plot_sp_sr_eff
+#ggsave("plot_sp_sr_eff.png", width = 15, height = 25)
+```
+

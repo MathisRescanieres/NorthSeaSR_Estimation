@@ -1,0 +1,3456 @@
+---
+title: "Untitled"
+author: "Héloïse CALZAN"
+date: "08/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("E:\\github\\travail_github\\Stage_M2_Calzan")
+
+library(readr)
+tableau_donnees <- read.csv("tableau_donnees_procedure_selection_1.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+tableau_sp_c <- read.csv("table_cohorte_procedure_selection_1.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+```
+
+explorations des tableaux
+```{r, include=FALSE}
+#tableau_donnees
+summary(tableau_donnees)
+sapply(tableau_donnees,FUN=function(el) sum(is.na(el)))
+sapply(tableau_donnees, FUN = class)
+
+tableau_donnees$Area <- as.factor(tableau_donnees$Area)
+tableau_donnees$Species <- as.factor(tableau_donnees$Species)
+tableau_donnees$Sex <- as.factor(tableau_donnees$Sex)
+tableau_donnees$Maturity <- as.factor(tableau_donnees$Maturity)
+tableau_donnees$AphiaID <- as.factor(tableau_donnees$AphiaID)
+
+sapply(tableau_donnees, FUN = levels)
+
+summary(tableau_donnees$LngtClass)
+summary(tableau_donnees$Age)
+#creation d'une colonne fcaohorte pour cohorte en factor ==> qui servira pour les glm
+tableau_donnees$fcohorte <- as.factor(tableau_donnees$Cohorte)
+
+#tableau_sp_c
+summary(tableau_sp_c)
+sapply(tableau_sp_c,FUN=function(el) sum(is.na(el)))
+sapply(tableau_sp_c, FUN = class)
+
+tableau_sp_c$Species <- as.factor(tableau_sp_c$Species)
+tableau_sp_c$Cohorte_factor <- as.factor(tableau_sp_c$Cohorte_factor)
+
+sapply(tableau_sp_c, FUN = levels)
+```
+
+
+Figure lm avec cohorte en variable explicative
+```{r, fig.width=13,fig.height=5,fig.show='hide'}
+library(ggplot2)
+##Figure
+ggplot(data = tableau_sp_c, aes(x = Cohorte, y = SR)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method="lm", se=TRUE, fullrange=FALSE, level=0.95) +
+  facet_wrap(~Species, scales = "free_x", ncol = 5) + 
+  labs(x = "Cohorte", y = "Sexe ratio") +
+  theme(strip.text.x = element_text(size=40)) +
+  theme_bw()
+
+ggsave("plot_sp.png", width = 13, height = 5)
+#ggsave("plot_sp.png", width = 13, height = 6)
+```
+
+
+Librairies modèles
+```{r library,include=FALSE}
+library(lmtest)
+library(lme4)
+library(car)
+library(nlme)
+library(dplyr)
+library(tidyverse)
+```
+
+
+**avec indice NAO**
+```{r, include=FALSE}
+tableau_NAO <- read.csv("Monthly mean NAO index since January 1950.csv", header = FALSE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+summary(tableau_NAO)
+sapply(tableau_NAO,FUN=function(el) sum(is.na(el)))
+sapply(tableau_NAO, FUN = class)
+str(tableau_NAO)
+
+tableau_NAO <- tableau_NAO[-73,]
+
+names(tableau_NAO)[names(tableau_NAO) == "V1"] <- "Date"
+names(tableau_NAO)[c(2: 13)] = c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")
+
+
+tableau_NAO <- mutate(tableau_NAO, Moy_NAO = rowMeans(select(tableau_NAO, Janvier : Decembre), na.rm = TRUE))
+
+Moy_NAO <- rowMeans(tableau_NAO[,2:13], na.rm = TRUE) 
+tableau_NAO$Moy_NAO <- Moy_NAO
+
+#tableau_NAO2 <- tableau_NAO %>% pivot_longer(c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")) 
+#names(tableau_NAO2)[names(tableau_NAO2) == "name"] <- "Mois"
+#names(tableau_NAO2)[names(tableau_NAO2) == "value"] <- "indice_NAO"
+
+plot(tableau_NAO$Moy_NAO ~ tableau_NAO$Date)
+lm(Moy_NAO ~ Date, data = tableau_NAO)
+summary(lm(Moy_NAO ~ Date, data = tableau_NAO))
+plot(lm(Moy_NAO ~ Date, data = tableau_NAO))
+
+#summary(lmer(indice_NAO ~ Date + (1|Mois), data = tableau_NAO2))
+```
+Le tableau_NAO au dessus avec le #ont été trouvé à partir de ce site :
+<https://www.cpc.ncep.noaa.gov/products/precip/CWlink/pna/nao_index.html>
+
+```{r}
+#tableau_nao_moy_JFM <- read.csv("moyennes_nao_jfm.csv", header = FALSE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+```
+le tableau_nao_moy_JFM s'appuit sur les données de ce site :
+<https://psl.noaa.gov/data/climateindices/>
+
+<https://psl.noaa.gov/cgi-bin/data/climateindices/corr.pl?tstype1=3&custname1=&custtitle1=&tstype2=0&custname2=&custtitle2=&year1=&year2=&itypea=0&y1=&y2=&plotstyle=0&length=&lag=&iall=0&iseas=1&mon1=0&mon2=2&anom=0&climo1_yr1=&climo1_yr2=&climo2_yr1=&climo2_yr2=&Submit=Calculate+Results>
+
+moyenne du la NAO pour Janvier Fevrier Mars
+
+```{r}
+tableau_NAO <- mutate(tableau_NAO, Moy_NAO_JFM = rowMeans(select(tableau_NAO, Janvier : Mars), na.rm = TRUE))
+summary(lm(Moy_NAO_JFM ~ Date, data = tableau_NAO))
+
+table_NAO_JFM <- tableau_NAO[,c("Date", "Moy_NAO_JFM")]
+names(table_NAO_JFM)[names(table_NAO_JFM) == "Date"] <- "Cohorte"# pour que ce soit compatible avec les années cohortes des tableaux des espèces
+
+ggplot(tableau_NAO, aes(x = Date, y = Moy_NAO_JFM)) +
+  geom_point() +
+  geom_line()+
+  theme_classic()
+#ggsave("moy_nao.png", width = 13, height = 6)
+```
+
+
+
+**AMO** : 
+<https://psl.noaa.gov/data/timeseries/AMO/>
+```{r, include=FALSE}
+tableau_AMO <- read.csv("AMO unsmoothed, detrended from the Kaplan SST V2.csv", header = FALSE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+names(tableau_AMO)[names(tableau_AMO) == "V1"] <- "Cohorte"
+names(tableau_AMO)[c(2: 13)] = c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")
+
+summary(tableau_AMO)
+sapply(tableau_AMO,FUN=function(el) sum(is.na(el)))
+sapply(tableau_AMO, FUN = class)
+str(tableau_AMO)
+
+tableau_AMO <- tableau_AMO[-75,]
+
+
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Janvier), colour = "#006666") +
+  theme_classic()
+
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Fevrier), colour = "#003399") +
+  theme_classic()
+    
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Mars), colour = "#9933FF") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Avril), colour = "#FF33FF") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Mai), colour = "#993366") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Juin), colour = "#990000") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Juillet), colour = "#FF6600") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Aout), colour = "#FFCC33") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Septembre), colour = "#669900") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Octobre), colour = "#66CC66") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Novembre), colour = "#00CC66") +
+  theme_classic()
+  
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Decembre), colour = "#33FFFF") +
+  theme_classic()
+
+
+
+cor(tableau_AMO[,c("Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre", "Decembre")])
+
+tableau_AMO <- mutate(tableau_AMO, Moy_AMO = rowMeans(select(tableau_AMO, Janvier : Decembre), na.rm = TRUE))
+ggplot(tableau_AMO, aes(x = Cohorte)) +
+  geom_line(aes(y = Moy_AMO), colour = "#CC00CC") +
+  theme_classic()
+
+
+tableau_AMO_moy <- tableau_AMO[,c("Cohorte", "Moy_AMO")]
+```
+
+
+**GSNW**
+<http://www.pml-gulfstream.org.uk/data.htm> ==> Cruises 
+```{r, include=FALSE}
+tableau_GSNW <- read.csv("GSNW_month.csv", header = TRUE, sep = ";",  na ="NA", stringsAsFactors = FALSE)
+names(tableau_GSNW)[names(tableau_GSNW) == "Year"] <- "Cohorte"
+names(tableau_GSNW)[c(2: 13)] = c("Janvier","Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre","Decembre")
+
+summary(tableau_GSNW)
+sapply(tableau_GSNW,FUN=function(el) sum(is.na(el)))
+sapply(tableau_GSNW, FUN = class)
+str(tableau_GSNW)
+
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Janvier), colour = "#006666") +
+  theme_classic()
+
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Fevrier), colour = "#003399") +
+  theme_classic()
+    
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Mars), colour = "#9933FF") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Avril), colour = "#FF33FF") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Mai), colour = "#993366") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Juin), colour = "#990000") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Juillet), colour = "#FF6600") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Aout), colour = "#FFCC33") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Septembre), colour = "#669900") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Octobre), colour = "#66CC66") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Novembre), colour = "#00CC66") +
+  theme_classic()
+  
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Decembre), colour = "#33FFFF") +
+  theme_classic()
+
+cor(tableau_GSNW[,c("Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin", "Juillet", "Aout", "Septembre", "Octobre", "Novembre", "Decembre")])
+
+ggplot(tableau_GSNW, aes(x = Cohorte)) +
+  geom_line(aes(y = Annual), colour = "#CC00CC") +
+  theme_classic()
+
+
+tableau_GSNW_moy <- tableau_GSNW[,c("Cohorte", "Annual")]
+```
+
+
+
+
+```{r, fig.height=10, fig.width=20}
+#ggplot(tableau_NAO2, aes(x = Mois, y = indice_NAO)) +
+#  geom_point() +
+#  facet_wrap(~ Date)
+```
+
+
+
+
+**glm**
+Fonctions utiles
+```{r}
+#centrer réduire les variables explicatives 
+fonction_scale_i <- function(tableau){
+  tableau <- mutate(tableau, sc_cohorte = as.numeric(scale(Cohorte)))
+  tableau <- mutate(tableau, sc_LngtClass = as.numeric(scale(LngtClass)))
+  tableau <- mutate(tableau, sc_age = as.numeric(scale(Age)))
+  tableau <- mutate(tableau, sc_Moy_NAO_JFM = as.numeric(scale(Moy_NAO_JFM)))
+  tableau <- mutate(tableau, sc_moy_AMO = as.numeric(scale(Moy_AMO)))
+  tableau <- mutate(tableau, sc_moy_GSNW = as.numeric(scale(Annual)))
+}
+
+fonction_corr <- function(tableau){
+  #tableau de correlation
+  corr <- cor(tableau[,c("sc_cohorte", "sc_LngtClass", "sc_age", "sc_Moy_NAO_JFM", "sc_moy_AMO", "sc_moy_GSNW")])
+  return(corr)
+}
+```
+
+Mettre le sexe numérique (données 0 et 1) en as.factor
+```{r}
+tableau_donnees$sexe_numerique <- as.factor(tableau_donnees$sexe_numerique)
+```
+
+
+Hareng
+```{r, include=FALSE}
+table_hareng_i <- filter(tableau_donnees, Species == "Clupea harengus")
+table_hareng_i <- table_hareng_i[order(table_hareng_i$Cohorte),]
+table_hareng_i <- merge(table_hareng_i, table_NAO_JFM, by = c("Cohorte"))
+table_hareng_i <- merge(table_hareng_i, tableau_AMO_moy, by =c("Cohorte"))
+table_hareng_i <- full_join(table_hareng_i, tableau_GSNW_moy, by = c("Cohorte"))
+
+
+summary(table_hareng_i)
+
+table_hareng_i <- fonction_scale_i(tableau = table_hareng_i)
+sapply(table_hareng_i, FUN = class)
+
+fonction_corr(tableau = table_hareng_i)
+```
+glm
+```{r}
+#M_i_H_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW, data =  table_hareng_i, family = binomial(link=logit))
+#vif(M_i_H_c1)
+
+#M_i_H_c3 <- glm(sexe_numerique ~   sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW, data =  table_hareng_i, family = binomial(link=logit))
+#vif(M_i_H_c3)
+```
+
+J'avais fais toutes les combinaisons de modèles
+```{r}
+M_i_H_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_H_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+M_i_H_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_H_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_H_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_H_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_H_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+M_i_H_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_H_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_H_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_H_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_H_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_H_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_H_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_H_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_H_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_H_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_H_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_H_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_H_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_H_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_H_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_H_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_H_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_H_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_H_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_H_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_H_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_H_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+M_i_H_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+M_i_H_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+M_i_H_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_H_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_H_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_H_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_H_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_H_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_H_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_H_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_H_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_H_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+M_i_H_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+M_i_H_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_H_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_H_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_H_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_H_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_H_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_H_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+M_i_H_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+M_i_H_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+M_i_H_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_H_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_H_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_H_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_H_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_H_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_H_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_H_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_hareng_i, family = binomial(link=logit))
+```
+
+```{r}
+vif(M_i_H_c)
+plot(M_i_H_c)
+acf(random.effects(M_i_H_c)$fcohorte)
+acf(random.effects(M_i_H_c)$Area)
+pacf(random.effects(M_i_H_c)$fcohorte)
+pacf(random.effects(M_i_H_c)$Area)
+summary(M_i_H_c)
+Anova(M_i_H_c)
+
+vif(M_i_H_1)
+summary(M_i_H_1)
+Anova(M_i_H_1)
+
+vif(M_i_H_2)
+summary(M_i_H_2)
+Anova(M_i_H_2)
+
+vif(M_i_H_7)
+summary(M_i_H_7)
+Anova(M_i_H_7)
+
+vif(M_i_H_29)
+summary(M_i_H_29)
+Anova(M_i_H_29)
+
+vif(M_i_H_30)
+summary(M_i_H_30)
+Anova(M_i_H_30)
+
+vif(M_i_H_31)
+summary(M_i_H_31)
+Anova(M_i_H_31)
+
+vif(M_i_H_40)
+summary(M_i_H_40)
+Anova(M_i_H_40)
+
+vif(M_i_H_50)
+summary(M_i_H_50)
+Anova(M_i_H_50)
+
+vif(M_i_H_51)
+summary(M_i_H_51)
+Anova(M_i_H_51)
+
+vif(M_i_H_52)
+summary(M_i_H_52)
+Anova(M_i_H_52)
+
+
+summary(M_i_H_nul)
+
+AIC(M_i_H_c)
+AIC(M_i_H_1)
+AIC(M_i_H_2)
+AIC(M_i_H_7)
+AIC(M_i_H_29)
+AIC(M_i_H_30)
+AIC(M_i_H_31)
+AIC(M_i_H_40)
+AIC(M_i_H_50)
+AIC(M_i_H_51)
+AIC(M_i_H_52)
+AIC(M_i_H_nul)
+
+summary(M_i_H_nul)
+```
+
+
+
+
+**figures**
+```{r}
+library(effects)
+library(jtools)
+library(sjPlot)
+
+
+plot(predictorEffects(M_i_H_7, residuals = TRUE))
+plot(predictorEffects( M_i_H_7))
+#ggsave("effets_h.png", width = 13, height = 6)
+
+plot_model(M_i_H_7, axis.labels = c("GSNW", "AMO", "NAO", "Age"), show.values = TRUE, show.p = TRUE, title = "effets des variables explicatives sur le sexe chez le Hareng ")
+ggsave("odd_ratio_H.png", width = 13, height = 6)
+
+plot_model(M_i_H_c2, axis.labels = c("GSNW", "AMO", "NAO", "Age", "Taille", "Cohorte"), show.values = TRUE, show.p = TRUE, title = "effets des variables explicatives sur le sexe chez le Hareng ")
+
+
+#effect_plot(M_i_H_c, pred = "sc_cohorte", interval = TRUE, partial.residuals = TRUE)
+
+```
+sc_Moy_NAO_JFM  3.7051  1   0.054246 .  
+sc_moy_AMO      8.3694  1   0.003816 ** 
+sc_moy_GSNW     0.0806  1   0.776420 
+
+
+
+Aiglefin
+```{r, include=FALSE}
+table_aiglefin_i <- filter(tableau_donnees, Species == "Melanogrammus aeglefinus")
+#table_aiglefin_i <- table_aiglefin_i[-which(table_aiglefin_i$Cohorte == 2020),]
+table_aiglefin_i <- table_aiglefin_i[order(table_aiglefin_i$Cohorte),]
+table_aiglefin_i <- merge(table_aiglefin_i, table_NAO_JFM, by = c("Cohorte"))
+table_aiglefin_i <- merge(table_aiglefin_i, tableau_AMO_moy, by =c("Cohorte"))
+table_aiglefin_i <- merge(table_aiglefin_i, tableau_GSNW_moy, by = c("Cohorte"))
+unique(table_aiglefin_i$fcohorte)# il y a des trous au début de la série temporelle
+
+table_aiglefin_i <- fonction_scale_i(tableau = table_aiglefin_i)
+fonction_corr(tableau = table_aiglefin_i)
+sapply(table_aiglefin_i, FUN = class)
+
+M_i_A_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW ,data =  table_aiglefin_i, family = binomial(link=logit))
+vif(M_i_A_c1)
+```
+
+```{r}
+M_i_A_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_A_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+M_i_A_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_A_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_A_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_A_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_A_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+M_i_A_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_A_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_A_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_A_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_A_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_A_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_A_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_A_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_A_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_A_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_A_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_A_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_A_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_A_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_A_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_A_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_A_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_A_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_A_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_A_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_A_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_A_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+M_i_A_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+M_i_A_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+M_i_A_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_A_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_A_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_A_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_A_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_A_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_A_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_A_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_A_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_A_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+M_i_A_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+M_i_A_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_A_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_A_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_A_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_A_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_A_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_A_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_A_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+M_i_A_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+M_i_A_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+M_i_A_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_A_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_A_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_A_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_A_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_A_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_A_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_A_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_A_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_A_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_A_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_aiglefin_i, family = binomial(link=logit))
+```
+
+```{r}
+vif(M_i_A_c)
+plot(M_i_A_c)
+acf(random.effects(M_i_A_c)$fcohorte)
+acf(random.effects(M_i_A_c)$Area)
+pacf(random.effects(M_i_A_c)$fcohorte)
+pacf(random.effects(M_i_A_c)$Area)
+summary(M_i_A_c)
+Anova(M_i_A_c)
+vif(M_i_A_c)
+AIC(M_i_A_c)
+
+vif(M_i_A_1)
+summary(M_i_A_1)
+Anova(M_i_A_1)
+AIC(M_i_A_2)
+
+vif(M_i_A_2)
+summary(M_i_A_2)
+Anova(M_i_A_2)
+
+vif(M_i_A_7)
+summary(M_i_A_7)
+Anova(M_i_A_7)
+
+vif(M_i_A_29)
+summary(M_i_A_29)
+Anova(M_i_A_29)
+AIC(M_i_A_29)
+
+vif(M_i_A_30)
+summary(M_i_A_30)
+Anova(M_i_A_30)
+AIC(M_i_A_30)
+
+vif(M_i_A_31)
+summary(M_i_A_31)
+Anova(M_i_A_31)
+AIC(M_i_A_31)
+
+vif(M_i_A_40)
+summary(M_i_A_40)
+Anova(M_i_A_40)
+AIC(M_i_A_40)
+
+vif(M_i_A_50)
+summary(M_i_A_50)
+Anova(M_i_A_50)
+
+vif(M_i_A_51)
+summary(M_i_A_51)
+Anova(M_i_A_51)
+
+vif(M_i_A_52)
+summary(M_i_A_52)
+Anova(M_i_A_52)
+
+
+summary(M_i_A_nul)
+
+AIC(M_i_A_c)
+AIC(M_i_A_1)
+AIC(M_i_A_2)
+AIC(M_i_A_7)
+AIC(M_i_A_29)
+AIC(M_i_A_30)
+AIC(M_i_A_31)
+AIC(M_i_A_40)
+AIC(M_i_A_50)
+AIC(M_i_A_51)
+AIC(M_i_A_52)
+AIC(M_i_A_nul)
+
+summary(M_i_A_nul)
+
+
+
+
+Anova(M_i_A_40)
+Anova(M_i_Mo_40)
+Anova(M_i_Me_40)
+Anova(M_i_P_40)
+Anova(M_i_L_40)
+Anova(M_i_Ma_40)
+Anova(M_i_S_40)
+Anova(M_i_T_40)
+
+summary(M_i_A_40)
+summary(M_i_Mo_40)
+summary(M_i_Me_40)
+summary(M_i_P_40)
+summary(M_i_L_40)
+summary(M_i_Ma_40)
+summary(M_i_S_40)
+summary(M_i_T_40)
+
+
+
+
+```
+M_i_A_c2
+sc_Moy_NAO_JFM    2.3479  1     0.1254    
+sc_moy_AMO        0.5765  1     0.4477    
+sc_moy_GSNW       0.6417  1     0.4231   
+
+**Morue**
+```{r, include=FALSE}
+table_morue_i <- filter(tableau_donnees, Species == "Gadus morhua")
+#outliers
+#table_morue_i <- table_morue_i[-which(table_morue_i$Cohorte == 1973),]
+#table_morue_i <- table_morue_i[-which(table_morue_i$Cohorte == 1975),]
+#table_morue_i <- table_morue_i[-which(table_morue_i$Cohorte == 2014),]
+
+
+table_morue_i <- table_morue_i[order(table_morue_i$Cohorte),]
+table_morue_i <- merge(table_morue_i, table_NAO_JFM, by = c("Cohorte"))
+table_morue_i <- merge(table_morue_i, tableau_AMO_moy, by =c("Cohorte"))
+table_morue_i <- merge(table_morue_i, tableau_GSNW_moy, by = c("Cohorte"))
+unique(table_morue_i$fcohorte)
+table_morue_i <- fonction_scale_i(tableau = table_morue_i)
+sapply(table_morue_i, FUN = class)
+
+fonction_corr(tableau = table_morue_i)
+M_S_Mo_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW, data =  table_morue_i, family = binomial(link=logit))
+vif(M_S_Mo_c1)
+```
+
+```{r}
+
+M_i_Mo_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_Mo_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+M_i_Mo_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_Mo_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_Mo_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_Mo_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_Mo_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+M_i_Mo_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_Mo_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_Mo_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_Mo_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_Mo_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_Mo_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_Mo_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_Mo_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_Mo_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_Mo_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_Mo_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_Mo_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_Mo_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_Mo_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_Mo_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_Mo_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_Mo_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_Mo_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_Mo_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_Mo_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_Mo_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_Mo_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+M_i_Mo_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+M_i_Mo_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+M_i_Mo_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_Mo_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_Mo_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_Mo_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_Mo_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_Mo_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_Mo_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_Mo_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_Mo_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_Mo_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+M_i_Mo_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+M_i_Mo_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_Mo_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_Mo_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Mo_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_Mo_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_Mo_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_Mo_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Mo_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+M_i_Mo_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+M_i_Mo_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+M_i_Mo_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_Mo_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_Mo_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_Mo_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Mo_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Mo_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Mo_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_Mo_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_Mo_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Mo_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_Mo_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_morue_i, family = binomial(link=logit))
+
+```
+
+```{r}
+vif(M_i_Mo_c)
+plot(M_i_Mo_c)
+acf(random.effects(M_i_Mo_c)$fcohorte)
+acf(random.effects(M_i_Mo_c)$Area)
+pacf(random.effects(M_i_Mo_c)$fcohorte)
+pacf(random.effects(M_i_Mo_c)$Area)
+summary(M_i_Mo_c)
+Anova(M_i_Mo_c)
+
+vif(M_i_Mo_1)
+summary(M_i_Mo_1)
+Anova(M_i_Mo_1)
+
+vif(M_i_Mo_2)
+summary(M_i_Mo_2)
+Anova(M_i_Mo_2)
+
+vif(M_i_Mo_7)
+summary(M_i_Mo_7)
+Anova(M_i_Mo_7)
+
+vif(M_i_Mo_29)
+summary(M_i_Mo_29)
+Anova(M_i_Mo_29)
+
+vif(M_i_Mo_30)
+summary(M_i_Mo_30)
+Anova(M_i_Mo_30)
+
+vif(M_i_Mo_31)
+summary(M_i_Mo_31)
+Anova(M_i_Mo_31)
+
+vif(M_i_Mo_40)
+summary(M_i_Mo_40)
+Anova(M_i_Mo_40)
+
+vif(M_i_Mo_50)
+summary(M_i_Mo_50)
+Anova(M_i_Mo_50)
+
+vif(M_i_Mo_51)
+summary(M_i_Mo_51)
+Anova(M_i_Mo_51)
+
+vif(M_i_Mo_52)
+summary(M_i_Mo_52)
+Anova(M_i_Mo_52)
+
+
+summary(M_i_Mo_nul)
+
+AIC(M_i_Mo_c)
+AIC(M_i_Mo_1)
+AIC(M_i_Mo_2)
+AIC(M_i_Mo_7)
+AIC(M_i_Mo_29)
+AIC(M_i_Mo_30)
+AIC(M_i_Mo_31)
+AIC(M_i_Mo_40)
+AIC(M_i_Mo_50)
+AIC(M_i_Mo_51)
+AIC(M_i_Mo_52)
+AIC(M_i_Mo_nul)
+
+summary(M_i_Mo_nul)
+
+
+
+
+
+
+AIC(M_i_Mo_c)
+AIC(M_i_Mo_1)
+AIC(M_i_Mo_2)
+AIC(M_i_Mo_7)
+AIC(M_i_Mo_40)
+AIC(M_i_Mo_nul)
+
+
+
+summary(M_i_H_c)
+summary(M_i_A_c)
+summary(M_i_Mo_c)
+
+```
+
+```{r, include=FALSE}
+table_merlan_i <- filter(tableau_donnees, Species == "Merlangius merlangus")
+table_merlan_i <- table_merlan_i[order(table_merlan_i$Cohorte),]
+#table_merlan_i <- table_merlan_i[-which(table_merlan_i$Cohorte == 1969),]
+
+
+table_merlan_i <- merge(table_merlan_i, table_NAO_JFM, by = c("Cohorte"))
+table_merlan_i <- merge(table_merlan_i, tableau_AMO_moy, by =c("Cohorte"))
+table_merlan_i <- merge(table_merlan_i, tableau_GSNW_moy, by = c("Cohorte"))
+
+unique(table_merlan_i$fcohorte)
+table_merlan_i <- fonction_scale_i(tableau = table_merlan_i)
+sapply(table_merlan_i, FUN = class)
+fonction_corr(tableau = table_merlan_i)#variables age et cohorte non corrélées
+
+
+M_i_Me_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW, data =  table_merlan_i, family = binomial(link=logit))
+vif(M_i_Me_c1)
+```
+
+```{r}
+#Modèle complet
+
+M_i_Me_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_Me_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+M_i_Me_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_Me_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_Me_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_Me_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_Me_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+M_i_Me_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_Me_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_Me_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_Me_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_Me_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_Me_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_Me_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_Me_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_Me_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_Me_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_Me_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_Me_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_Me_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_Me_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_Me_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_Me_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_Me_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_Me_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_Me_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_Me_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_Me_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_Me_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_Me_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_Me_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+#M_i_Me_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_Me_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_Me_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_Me_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_Me_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_Me_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_Me_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_Me_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_Me_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_Me_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+#M_i_Me_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Me_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_Me_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_Me_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Me_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_Me_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_Me_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_Me_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Me_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+#M_i_Me_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+#M_i_Me_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Me_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_Me_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_Me_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_Me_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Me_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Me_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Me_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_Me_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_Me_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Me_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_Me_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_merlan_i, family = binomial(link=logit))
+```
+Response: sexe_numerique
+                    Chisq Df Pr(>Chisq)    
+sc_LngtClass   13272.0694  1  < 2.2e-16 ***
+sc_age          5180.6673  1  < 2.2e-16 ***
+sc_Moy_NAO_JFM     0.8430  1    0.35855    
+sc_moy_AMO        30.2219  1  3.853e-08 ***
+sc_moy_GSNW        4.7211  1    0.02979 *  
+
+```{r}
+vif(M_i_Me_c)
+plot(M_i_Me_c)
+acf(random.effects(M_i_Me_c)$fcohorte)
+acf(random.effects(M_i_Me_c)$Area)
+pacf(random.effects(M_i_Me_c)$fcohorte)
+pacf(random.effects(M_i_Me_c)$Area)
+summary(M_i_Me_c)
+Anova(M_i_Me_c)
+
+vif(M_i_Me_1)
+summary(M_i_Me_1)
+Anova(M_i_Me_1)
+
+vif(M_i_Me_2)
+summary(M_i_Me_2)
+Anova(M_i_Me_2)
+
+vif(M_i_Me_7)
+summary(M_i_Me_7)
+Anova(M_i_Me_7)
+
+vif(M_i_Me_29)
+summary(M_i_Me_29)
+Anova(M_i_Me_29)
+
+vif(M_i_Me_30)
+summary(M_i_Me_30)
+Anova(M_i_Me_30)
+
+vif(M_i_Me_31)
+summary(M_i_Me_31)
+Anova(M_i_Me_31)
+
+vif(M_i_Me_40)
+summary(M_i_Me_40)
+Anova(M_i_Me_40)
+
+vif(M_i_Me_50)
+summary(M_i_Me_50)
+Anova(M_i_Me_50)
+
+vif(M_i_Me_51)
+summary(M_i_Me_51)
+Anova(M_i_Me_51)
+
+vif(M_i_Me_52)
+summary(M_i_Me_52)
+Anova(M_i_Me_52)
+
+
+summary(M_i_Me_nul)
+
+AIC(M_i_Me_c)
+AIC(M_i_Me_1)
+AIC(M_i_Me_2)
+AIC(M_i_Me_7)
+AIC(M_i_Me_29)
+AIC(M_i_Me_30)
+AIC(M_i_Me_31)
+AIC(M_i_Me_40)
+AIC(M_i_Me_50)
+AIC(M_i_Me_51)
+AIC(M_i_Me_52)
+AIC(M_i_Me_nul)
+
+summary(M_i_Me_nul)
+```
+
+```{r}
+table_plie_i <- filter(tableau_donnees, Species == "Pleuronectes platessa")
+#table_plie_i <- table_plie_i[-which(table_plie_i$Cohorte == 1996),]
+table_plie_i <- table_plie_i[order(table_plie_i$Cohorte),]
+table_plie_i <- merge(table_plie_i, table_NAO_JFM, by = c("Cohorte"))
+table_plie_i <- merge(table_plie_i, tableau_AMO_moy, by =c("Cohorte"))
+table_plie_i <- merge(table_plie_i, tableau_GSNW_moy, by = c("Cohorte"))
+
+unique(table_plie_i$fcohorte)
+table_plie_i <- fonction_scale_i(tableau = table_plie_i)
+sapply(table_plie_i, FUN = class)
+
+fonction_corr(tableau = table_plie_i)
+
+M_i_P_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW, data =  table_plie_i, family = binomial(link=logit))
+vif(M_i_P_c1)
+```
+
+
+
+```{r}
+#Modèle complet
+M_i_P_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_P_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+#M_i_P_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_P_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_P_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_P_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_P_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+#M_i_P_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_P_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_P_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_P_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_P_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_P_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_P_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_P_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_P_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_P_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_P_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_P_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_P_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_P_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_P_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_P_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_P_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_P_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_P_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_P_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_P_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_P_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_P_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_P_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+#M_i_P_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_P_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_P_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_P_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_P_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_P_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_P_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_P_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_P_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_P_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+#M_i_P_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_P_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_P_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_P_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_P_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_P_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_P_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_P_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_P_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+#M_i_P_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+#M_i_P_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_P_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_P_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_P_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_P_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_P_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_P_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_P_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_P_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_P_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_P_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_P_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_plie_i, family = binomial(link=logit))
+```
+Response: sexe_numerique
+                   Chisq Df Pr(>Chisq)    
+sc_LngtClass   3233.3023  1  < 2.2e-16 ***
+sc_age          377.5388  1  < 2.2e-16 ***
+sc_Moy_NAO_JFM    0.5039  1  0.4778084    
+sc_moy_AMO       12.0306  1  0.0005233 ***
+sc_moy_GSNW       0.1611  1  0.6881430  
+
+```{r}
+vif(M_i_P_c)
+plot(M_i_P_c)
+acf(random.effects(M_i_P_c)$fcohorte)
+acf(random.effects(M_i_P_c)$Area)
+pacf(random.effects(M_i_P_c)$fcohorte)
+pacf(random.effects(M_i_P_c)$Area)
+summary(M_i_P_c)
+Anova(M_i_P_c)
+
+vif(M_i_P_1)
+summary(M_i_P_1)
+Anova(M_i_P_1)
+
+vif(M_i_P_2)
+summary(M_i_P_2)
+Anova(M_i_P_2)
+
+vif(M_i_P_7)
+summary(M_i_P_7)
+Anova(M_i_P_7)
+
+vif(M_i_P_29)
+summary(M_i_P_29)
+Anova(M_i_P_29)
+
+vif(M_i_P_30)
+summary(M_i_P_30)
+Anova(M_i_P_30)
+
+vif(M_i_P_31)
+summary(M_i_P_31)
+Anova(M_i_P_31)
+
+vif(M_i_P_40)
+summary(M_i_P_40)
+Anova(M_i_P_40)
+
+vif(M_i_P_50)
+summary(M_i_P_50)
+Anova(M_i_P_50)
+
+vif(M_i_P_51)
+summary(M_i_P_51)
+Anova(M_i_P_51)
+
+vif(M_i_P_52)
+summary(M_i_P_52)
+Anova(M_i_P_52)
+
+
+summary(M_i_P_nul)
+
+AIC(M_i_P_c)
+AIC(M_i_P_1)
+AIC(M_i_P_2)
+AIC(M_i_P_7)
+AIC(M_i_P_29)
+AIC(M_i_P_30)
+AIC(M_i_P_31)
+AIC(M_i_P_40)
+AIC(M_i_P_50)
+AIC(M_i_P_51)
+AIC(M_i_P_52)
+AIC(M_i_P_nul)
+
+
+vif(M_i_Me_c)
+vif(M_i_P_c)
+```
+
+```{r, include=FALSE}
+table_lieu_i <- filter(tableau_donnees, Species == "Pollachius virens")
+#table_lieu_i <- table_lieu_i[-which(table_lieu_i$Cohorte == 1973),]
+table_lieu_i <- table_lieu_i[order(table_lieu_i$Cohorte),]
+unique(table_lieu_i$fcohorte)
+table_lieu_i <- merge(table_lieu_i, table_NAO_JFM, by = c("Cohorte"))
+table_lieu_i <- merge(table_lieu_i, tableau_AMO_moy, by =c("Cohorte"))
+table_lieu_i <- merge(table_lieu_i, tableau_GSNW_moy, by = c("Cohorte"))
+
+table_lieu_i <- fonction_scale_i(tableau = table_lieu_i)
+sapply(table_lieu_i, FUN = class)
+fonction_corr(tableau = table_lieu_i)
+
+M_i_L_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW, data =  table_lieu_i, family = binomial(link=logit))
+vif(M_i_L_c1)
+```
+
+```{r}
+#Modèle complet
+M_i_L_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_L_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+#M_i_L_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_L_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_L_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_L_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_L_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+#M_i_L_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_L_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_L_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_L_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_L_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_L_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_L_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_L_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_L_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_L_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_L_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_L_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_L_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_L_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_L_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_L_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_L_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_L_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_L_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_L_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_L_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_L_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_L_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_L_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+#M_i_L_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_L_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_L_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_L_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_L_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_L_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_L_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_L_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_L_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_L_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+#M_i_L_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_L_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_L_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_L_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_L_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_L_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_L_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_L_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_L_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+#M_i_L_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+#M_i_L_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_L_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_L_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_L_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_L_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_L_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_L_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_L_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_L_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_L_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_L_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_L_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_lieu_i, family = binomial(link=logit))
+```
+
+```{r}
+vif(M_i_L_c)
+plot(M_i_L_c)
+acf(random.effects(M_i_L_c)$fcohorte)
+acf(random.effects(M_i_L_c)$Area)
+pacf(random.effects(M_i_L_c)$fcohorte)
+pacf(random.effects(M_i_L_c)$Area)
+summary(M_i_L_c)
+Anova(M_i_L_c)
+
+vif(M_i_L_1)
+summary(M_i_L_1)
+Anova(M_i_L_1)
+
+vif(M_i_L_2)
+summary(M_i_L_2)
+Anova(M_i_L_2)
+
+vif(M_i_L_7)
+summary(M_i_L_7)
+Anova(M_i_L_7)
+
+vif(M_i_L_29)
+summary(M_i_L_29)
+Anova(M_i_L_29)
+
+vif(M_i_L_30)
+summary(M_i_L_30)
+Anova(M_i_L_30)
+
+vif(M_i_L_31)
+summary(M_i_L_31)
+Anova(M_i_L_31)
+
+vif(M_i_L_40)
+summary(M_i_L_40)
+Anova(M_i_L_40)
+
+vif(M_i_L_50)
+summary(M_i_L_50)
+Anova(M_i_L_50)
+
+vif(M_i_L_51)
+summary(M_i_L_51)
+Anova(M_i_L_51)
+
+vif(M_i_L_52)
+summary(M_i_L_52)
+Anova(M_i_L_52)
+
+
+summary(M_i_L_nul)
+
+AIC(M_i_L_c)
+AIC(M_i_L_1)
+AIC(M_i_L_2)
+AIC(M_i_L_7)
+AIC(M_i_L_29)
+AIC(M_i_L_30)
+AIC(M_i_L_31)
+AIC(M_i_L_40)
+AIC(M_i_L_50)
+AIC(M_i_L_51)
+AIC(M_i_L_52)
+AIC(M_i_L_nul)
+
+summary(M_i_L_nul)
+```
+
+
+
+```{r, include=FALSE}
+table_maquereau_i <- filter(tableau_donnees, Species == "Scomber scombrus")
+table_maquereau_i <- table_maquereau_i[order(table_maquereau_i$Cohorte),]
+#table_maquereau_i <- table_maquereau_i[-which(table_maquereau_i$Cohorte == 2020),]
+table_maquereau_i <- merge(table_maquereau_i, table_NAO_JFM, by = c("Cohorte"))
+table_maquereau_i <- merge(table_maquereau_i, tableau_AMO_moy, by =c("Cohorte"))
+table_maquereau_i <- merge(table_maquereau_i, tableau_GSNW_moy, by = c("Cohorte"))
+
+
+unique(table_maquereau_i$fcohorte)
+table_maquereau_i <- fonction_scale_i(tableau = table_maquereau_i)
+sapply(table_maquereau_i, FUN = class)
+summary(table_maquereau_i$Area)
+fonction_corr(tableau = table_maquereau_i)
+
+
+M_i_Ma_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +  sc_moy_GSNW, data =  table_maquereau_i, family = binomial(link=logit))
+vif(M_i_Ma_c1)
+```
+
+```{r}
+#Modèle complet
+M_i_Ma_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_Ma_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+#M_i_Ma_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_Ma_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_Ma_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_Ma_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_Ma_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+#M_i_Ma_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_Ma_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_Ma_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_Ma_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_Ma_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_Ma_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_Ma_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_Ma_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_Ma_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_Ma_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_Ma_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_Ma_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_Ma_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_Ma_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_Ma_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_Ma_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_Ma_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_Ma_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_Ma_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_Ma_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_Ma_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_Ma_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_Ma_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_Ma_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+#M_i_Ma_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_Ma_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_Ma_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_Ma_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_Ma_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_Ma_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_Ma_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_Ma_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_Ma_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_Ma_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+#M_i_Ma_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Ma_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_Ma_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_Ma_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Ma_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_Ma_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_Ma_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_Ma_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Ma_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+#M_i_Ma_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+#M_i_Ma_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Ma_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_Ma_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_Ma_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_Ma_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Ma_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Ma_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_Ma_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_Ma_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_Ma_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_Ma_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_Ma_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_maquereau_i, family = binomial(link=logit))
+```
+
+```{r}
+vif(M_i_Ma_c)
+plot(M_i_Ma_c)
+#acf(random.effects(M_i_Ma_c)$fcohorte)
+#acf(random.effects(M_i_Ma_c)$Area)
+#pacf(random.effects(M_i_Ma_c)$fcohorte)
+#pacf(random.effects(M_i_Ma_c)$Area)
+summary(M_i_Ma_c)
+Anova(M_i_Ma_c)
+
+vif(M_i_Ma_1)
+summary(M_i_Ma_1)
+Anova(M_i_Ma_1)
+
+vif(M_i_Ma_2)
+summary(M_i_Ma_2)
+Anova(M_i_Ma_2)
+
+vif(M_i_Ma_7)
+summary(M_i_Ma_7)
+Anova(M_i_Ma_7)
+
+vif(M_i_Ma_29)
+summary(M_i_Ma_29)
+Anova(M_i_Ma_29)
+
+vif(M_i_Ma_30)
+summary(M_i_Ma_30)
+Anova(M_i_Ma_30)
+
+vif(M_i_Ma_31)
+summary(M_i_Ma_31)
+Anova(M_i_Ma_31)
+
+vif(M_i_Ma_40)
+summary(M_i_Ma_40)
+Anova(M_i_Ma_40)
+
+vif(M_i_Ma_50)
+summary(M_i_Ma_50)
+Anova(M_i_Ma_50)
+
+vif(M_i_Ma_51)
+summary(M_i_Ma_51)
+Anova(M_i_Ma_51)
+
+vif(M_i_Ma_52)
+summary(M_i_Ma_52)
+Anova(M_i_Ma_52)
+
+
+summary(M_i_Ma_nul)
+
+AIC(M_i_Ma_c)
+AIC(M_i_Ma_1)
+AIC(M_i_Ma_2)
+AIC(M_i_Ma_7)
+AIC(M_i_Ma_29)
+AIC(M_i_Ma_30)
+AIC(M_i_Ma_31)
+AIC(M_i_Ma_40)
+AIC(M_i_Ma_50)
+AIC(M_i_Ma_51)
+AIC(M_i_Ma_52)
+AIC(M_i_Ma_nul)
+
+summary(M_i_Ma_nul)
+```
+
+```{r, include=FALSE}
+table_sprat_i <- filter(tableau_donnees, Species == "Sprattus sprattus")
+table_sprat_i <- table_sprat_i[order(table_sprat_i$Cohorte),]
+#table_sprat_i <- table_sprat_i[-which(table_sprat_i$Cohorte == 1978),]
+#table_sprat_i <- table_sprat_i[-which(table_sprat_i$Cohorte == 2020),]
+unique(table_sprat_i$fcohorte)#trous dans la série temporelle
+table_sprat_i <- merge(table_sprat_i, table_NAO_JFM, by = c("Cohorte"))
+table_sprat_i <- merge(table_sprat_i, tableau_AMO_moy, by =c("Cohorte"))
+table_sprat_i <- merge(table_sprat_i, tableau_GSNW_moy, by = c("Cohorte"))
+
+table_sprat_i <- fonction_scale_i(tableau = table_sprat_i)
+
+sapply(table_sprat_i, FUN = class)
+fonction_corr(tableau = table_sprat_i)
+
+
+M_i_S_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +  sc_moy_GSNW, data =  table_sprat_i, family = binomial(link=logit))
+
+M_i_S_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO , data =  table_sprat_i, family = binomial(link=logit))
+vif(M_i_S_c1) #corrélation entre AMO et Cohorte
+```
+
+```{r}
+#Modèle complet
+M_i_S_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_S_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+#M_i_S_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_S_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_S_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_S_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_S_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+#M_i_S_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_S_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_S_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_S_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_S_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_S_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_S_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_S_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_S_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_S_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_S_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_S_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_S_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_S_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_S_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_S_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_S_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_S_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_S_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_S_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_S_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_S_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_S_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_S_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+#M_i_S_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_S_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_S_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_S_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_S_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_S_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_S_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_S_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_S_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_S_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+#M_i_S_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_S_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_S_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_S_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_S_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_S_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_S_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_S_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_S_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+#M_i_S_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+#M_i_S_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_S_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_S_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_S_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_S_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_S_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_S_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_S_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_S_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_S_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_S_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_S_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_sprat_i, family = binomial(link=logit))
+```
+
+```{r}
+vif(M_i_S_c)
+plot(M_i_S_c)
+acf(random.effects(M_i_S_c)$fcohorte)
+acf(random.effects(M_i_S_c)$Area)
+pacf(random.effects(M_i_S_c)$fcohorte)
+pacf(random.effects(M_i_S_c)$Area)
+summary(M_i_S_c)
+Anova(M_i_S_c)
+
+vif(M_i_S_1)
+summary(M_i_S_1)
+Anova(M_i_S_1)
+
+vif(M_i_S_2)
+summary(M_i_S_2)
+Anova(M_i_S_2)
+
+vif(M_i_S_7)
+summary(M_i_S_7)
+Anova(M_i_S_7)
+
+vif(M_i_S_29)
+summary(M_i_S_29)
+Anova(M_i_S_29)
+
+vif(M_i_S_30)
+summary(M_i_S_30)
+Anova(M_i_S_30)
+
+vif(M_i_S_31)
+summary(M_i_S_31)
+Anova(M_i_S_31)
+
+vif(M_i_S_40)
+summary(M_i_S_40)
+Anova(M_i_S_40)
+
+vif(M_i_S_50)
+summary(M_i_S_50)
+Anova(M_i_S_50)
+
+vif(M_i_S_51)
+summary(M_i_S_51)
+Anova(M_i_S_51)
+
+vif(M_i_S_52)
+summary(M_i_S_52)
+Anova(M_i_S_52)
+
+
+summary(M_i_S_nul)
+
+AIC(M_i_S_c)
+AIC(M_i_S_1)
+AIC(M_i_S_2)
+AIC(M_i_S_7)
+AIC(M_i_S_29)
+AIC(M_i_S_30)
+AIC(M_i_S_31)
+AIC(M_i_S_40)
+AIC(M_i_S_50)
+AIC(M_i_S_51)
+AIC(M_i_S_52)
+AIC(M_i_S_nul)
+
+summary(M_i_S_nul)
+```
+```{r}
+
+#plot(predictorEffects(M_i_S_7, residuals = TRUE))
+#ggsave("effet_S.png",plot = plot(predictorEffects(M_i_S_7, residuals = TRUE)), width = 13, height = 6)
+.#plot(predictorEffects( M_i_H_40))
+#ggsave("effets_h.png", width = 13, height = 6)
+
+#plot_model(M_i_S_7, axis.labels = c("GSNW", "AMO", "NAO", "Age"),  show.values = TRUE, show.p = TRUE, title = "effets des variables explicatives sur le sexe chez le Sprat ")
+
+#ggsave("odd_ratio_S.png", width = 13, height = 6)
+```
+
+
+
+```{r, include=FALSE}
+table_tacaud_i <- filter(tableau_donnees, Species == "Trisopterus esmarkii")
+#table_tacaud_i <- table_tacaud_i[-which(table_tacaud_i$Cohorte == 1970),]
+table_tacaud_i <- table_tacaud_i[order(table_tacaud_i$Cohorte),]
+table_tacaud_i <- merge(table_tacaud_i, table_NAO_JFM, by = c("Cohorte"))
+table_tacaud_i <- merge(table_tacaud_i, tableau_AMO_moy, by =c("Cohorte"))
+table_tacaud_i <- merge(table_tacaud_i, tableau_GSNW_moy, by = c("Cohorte"))
+
+
+unique(table_tacaud_i$fcohorte)
+table_tacaud_i <- fonction_scale_i(tableau = table_tacaud_i)
+sapply(table_tacaud_i, FUN = class)
+fonction_corr(tableau = table_tacaud_i)
+
+M_i_T_c1 <- glm(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age+ sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW, data =  table_tacaud_i, family = binomial(link=logit))
+vif(M_i_T_c1)
+```
+
+
+```{r}
+#Modèle complet
+M_i_T_c <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+#sc_cohorte +
+M_i_T_1 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+# + sc_LngtClass
+#M_i_T_2 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_age 
+#M_i_T_3 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM 
+#M_i_T_4 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_moy_AMO
+#M_i_T_5 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_moy_GSNW
+#M_i_T_6 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#########################################################################################################################################
+
+#sc_cohorte + sc_LngtClass +
+#M_i_T_7 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age
+#M_i_T_8 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM
+#M_i_T_9 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_moy_AMO +
+#M_i_T_10 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM +  sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_moy_GSNW
+#M_i_T_11 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass sc_age 
+#M_i_T_12 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_Moy_NAO_JFM + 
+#M_i_T_13 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass  sc_moy_AMO +
+#M_i_T_14 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+# + sc_LngtClass + sc_moy_GSNW
+#M_i_T_15 <- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+#+ sc_age   + sc_Moy_NAO_JFM
+#M_i_T_16 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_AMO
+#M_i_T_17 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+#+ sc_age + sc_moy_GSNW
+#M_i_T_18 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_AMO
+#M_i_T_19 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_T_20 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+#+ sc_moy_AMO + sc_moy_GSNW
+#M_i_T_21 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#####################################################################################################################################
+#sc_cohorte + sc_LngtClass + sc_age +
+#M_i_T_22 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass sc_Moy_NAO_JFM + 
+#M_i_T_23 <- glmer(sexe_numerique ~ sc_age + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_AMO
+#M_i_T_24 <- glmer(sexe_numerique ~   sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass +sc_moy_GSNW
+#M_i_T_25 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age sc_Moy_NAO_JFM +
+#M_i_T_26 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+#sc_cohorte + sc_age + sc_moy_AMO
+#M_i_T_27 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_GSNW
+#M_i_T_28 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_T_29 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_T_30 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_moy_AMO + sc_moy_GSNW
+#M_i_T_31 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age  + sc_Moy_NAO_JFM+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_Moy_NAO_JFM
+#M_i_T_32 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_AMO
+#M_i_T_33 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age sc_moy_GSNW
+#M_i_T_34 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_T_35 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+# sc_LngtClass sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_T_36 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+# sc_LngtClass sc_moy_AMO sc_moy_GSNW
+#M_i_T_37<- glmer(sexe_numerique ~ sc_cohorte + sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_AMO
+#M_i_T_38 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+# + sc_age  + sc_Moy_NAO_JFM sc_moy_GSNW
+#M_i_T_39 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass  + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+# sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+M_i_T_40 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + sc_age +  (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+
+############################################################################################################
+#+ sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW+
+#M_i_T_41 <- glmer(sexe_numerique ~ sc_cohorte + sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_T_42 <- glmer(sexe_numerique ~ sc_cohorte  + sc_age  + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_T_43 <- glmer(sexe_numerique ~ sc_cohorte + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM  + sc_moy_GSNW
+#M_i_T_44 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_T_45 <- glmer(sexe_numerique ~ sc_cohorte + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW +
+#M_i_T_46 <- glmer(sexe_numerique ~  sc_LngtClass + sc_age + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_moy_AMO + sc_moy_GSNW + 
+#M_i_T_47 <- glmer(sexe_numerique ~  sc_LngtClass + sc_Moy_NAO_JFM +(1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM ++ sc_moy_GSNW 
+#M_i_T_48 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_T_49 <- glmer(sexe_numerique ~  sc_LngtClass + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_moy_AMO + sc_moy_GSNW +
+#M_i_T_50 <- glmer(sexe_numerique ~  sc_age + sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + + sc_moy_GSNW
+#M_i_T_51 <- glmer(sexe_numerique ~  sc_age + sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_T_52 <- glmer(sexe_numerique ~  sc_age + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_GSNW
+#M_i_T_53 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM + sc_moy_AMO  + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_moy_AMO
+#M_i_T_54 <- glmer(sexe_numerique ~ sc_Moy_NAO_JFM  + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte sc_LngtClass + sc_age + sc_Moy_NAO_JFM
+#M_i_T_55 <- glmer(sexe_numerique ~  sc_moy_AMO + sc_moy_GSNW + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+####################################################################################################
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_T_56 <- glmer(sexe_numerique ~ sc_cohorte + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_T_57 <- glmer(sexe_numerique ~  sc_LngtClass + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + + sc_Moy_NAO_JFM + sc_moy_AMO + sc_moy_GSNW
+#M_i_T_58 <- glmer(sexe_numerique ~ sc_age + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + + sc_moy_AMO + sc_moy_GSNW
+#M_i_T_59 <- glmer(sexe_numerique ~  sc_Moy_NAO_JFM + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#sc_cohorte + sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_GSNW
+#M_i_T_60 <- glmer(sexe_numerique ~  sc_moy_AMO + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+#+ sc_LngtClass + sc_age + sc_Moy_NAO_JFM + sc_moy_AMO +
+#M_i_T_61 <- glmer(sexe_numerique ~ sc_cohorte  + sc_moy_GSNW+ (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+
+##################################################################################################
+
+M_i_T_nul <- glmer(sexe_numerique ~ 1 + (1| Area) + (1| fcohorte), data =  table_tacaud_i, family = binomial(link=logit))
+```
+
+```{r}
+vif(M_i_T_c)
+plot(M_i_T_c)
+acf(random.effects(M_i_T_c)$fcohorte)
+acf(random.effects(M_i_T_c)$Area)
+pacf(random.effects(M_i_T_c)$fcohorte)
+pacf(random.effects(M_i_T_c)$Area)
+summary(M_i_T_c)
+Anova(M_i_T_c)
+
+vif(M_i_T_1)
+summary(M_i_T_1)
+Anova(M_i_T_1)
+
+vif(M_i_T_2)
+summary(M_i_T_2)
+Anova(M_i_T_2)
+
+vif(M_i_T_7)
+summary(M_i_T_7)
+Anova(M_i_T_7)
+
+vif(M_i_T_29)
+summary(M_i_T_29)
+Anova(M_i_T_29)
+
+vif(M_i_T_30)
+summary(M_i_T_30)
+Anova(M_i_T_30)
+
+vif(M_i_T_31)
+summary(M_i_T_31)
+Anova(M_i_T_31)
+
+vif(M_i_T_40)
+summary(M_i_T_40)
+Anova(M_i_T_40)
+
+vif(M_i_T_50)
+summary(M_i_T_50)
+Anova(M_i_T_50)
+
+vif(M_i_T_51)
+summary(M_i_T_51)
+Anova(M_i_T_51)
+
+vif(M_i_T_52)
+summary(M_i_T_52)
+Anova(M_i_T_52)
+
+
+summary(M_i_T_nul)
+
+AIC(M_i_T_c)
+AIC(M_i_T_1)
+AIC(M_i_T_2)
+AIC(M_i_T_7)
+AIC(M_i_T_29)
+AIC(M_i_T_30)
+AIC(M_i_T_31)
+AIC(M_i_T_40)
+AIC(M_i_T_50)
+AIC(M_i_T_51)
+AIC(M_i_T_52)
+AIC(M_i_T_nul)
+
+summary(M_i_T_nul)
+
+
+
+AIC(M_i_H_c)
+AIC(M_i_A_c)
+AIC(M_i_Mo_c)
+AIC(M_i_Me_c)
+AIC(M_i_P_c)
+AIC(M_i_L_c)
+AIC(M_i_Ma_c)
+AIC(M_i_S_c)
+AIC(M_i_T_c)
+
+summary(M_i_H_nul)
+summary(M_i_A_nul)
+summary(M_i_Mo_nul)
+summary(M_i_Me_nul)
+summary(M_i_P_nul)
+summary(M_i_L_nul)
+summary(M_i_Ma_nul)
+summary(M_i_S_nul)
+summary(M_i_T_nul)
+
+
+```
+
+**résidus vs predictions**
+```{r, fig.height=5}
+plot(M_i_H_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Hareng, modèle complet", col = 3)
+
+
+plot(M_i_A_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Aiglefin, modèle complet", col = 3)
+
+
+plot(M_i_Mo_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Morue, modèle complet", col = 3)
+
+plot(M_i_Me_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Merlan, modèle complet", col = 3)
+
+plot(M_i_P_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Plie, modèle complet", col = 3)
+
+plot(M_i_L_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Lieu, modèle complet", col = 3)
+
+plot(M_i_Ma_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Maquereau, modèle complet", col = 3)
+
+plot(M_i_S_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Sprat, modèle complet", col = 3)
+
+plot(M_i_T_c,  type=c("p","smooth"), col.line=1, main = "Residus VS prediction, Tacaud, modèle complet", col = 3)
+
+
+
+```
+
+
+```{r, fig.height=15, fig.width=8}
+library(ggResidpanel)
+H_plot <-resid_compare(list(M_i_H_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+#A_plot <- resid_compare(list(M_i_A_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+Mo_plot <- resid_compare(list( M_i_Mo_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+#Me_plot <- resid_compare(list(M_i_Me_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+P_plot <- resid_compare(list(M_i_P_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+#L_plot <- resid_compare(list(M_i_L_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+Ma_plot <- resid_compare(list(M_i_Ma_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+S_plot <- resid_compare(list(M_i_S_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+#T_plot <- resid_compare(list(M_i_T_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+LS_plot <- resid_compare(list(M_i_LS_c), plots = c("resid", "index", "yvp", "boxplot"), type = "deviance", smoother = TRUE)
+
+
+#resid_compare(list(M_i_A_c, M_i_A_1, M_i_A_40), plots = c("resid"), type = "pearson", smoother = TRUE)
+```
+
+#scale-location plot
+```{r}
+
+plot(M_i_H_c, sqrt(abs(resid(., type = "deviance")))~fitted(.), type=c("p","smooth"), col.line=1, col = 7, main = "scale - location plot Hareng, modèle complet") #racine carré de la valeur aboslue des résidus
+
+plot(M_i_H_c, sqrt(abs(resid(., type = "response")))~fitted(.), type=c("p","smooth"), col.line=1, col = 7, main = "scale - location plot Hareng, modèle complet") #racine carré de la valeur aboslue des résidus
+
+
+plot(M_i_H_c, sqrt(abs(resid(., type = "pearson")))~fitted(.), type=c("p","smooth"), col.line=1, col = 7, main = "scale - location plot Hareng, modèle complet") #racine carré de la valeur aboslue des résidus
+
+
+## standardized residuals versus fitted values by gender
+#plot(M_i_H_c, resid(., scaled=TRUE) ~ fitted(.), abline = 0)
+
+plot(M_i_H_c, sqrt(abs(resid(.)))~fitted(.), type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Hareng, modèle complet")
+
+
+
+######################
+plot(M_i_A_c, sqrt(abs(resid(.)))~fitted(.), type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Aiglefin, modèle complet")
+
+
+######################
+plot(M_i_Me_c, sqrt(abs(resid(.)))~fitted(.), type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Merlan, modèle complet")
+
+
+
+######################
+plot(M_i_Mo_c, sqrt(abs(resid(.)))~fitted(.), type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Morue, modèle complet")
+
+
+######################
+plot(M_i_P_c, sqrt(abs(resid(.)))~fitted(.), type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Plie, modèle complet")
+
+
+######################
+plot(M_i_L_c, sqrt(abs(resid(.)))~fitted(.),  type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Lieu, modèle complet")
+
+######################
+plot(M_i_Ma_c, sqrt(abs(resid(.)))~fitted(.), type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Maquereau, modèle complet")
+
+
+######################
+plot(M_i_S_c, sqrt(abs(resid(.)))~fitted(.), type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Sprat, modèle complet")
+
+######################
+plot(M_i_T_c, sqrt(abs(resid(.)))~fitted(.),  type=c("p","smooth"), col.line=1, col = 3, main = "scale - location plot Tacaud, modèle complet")
+
+
+```
+
+Observation contre predicion 1
+```{r}
+library(ggplot2)
+ggplot(table_hareng_i[-which(table_hareng_i$Cohorte < 1966 | table_hareng_i$Cohorte == 2021),], aes(x = fitted(M_i_H_c) ,y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Hareng modèle complet", subtitle = "avec selection a priori") +
+  theme_classic()
+
+
+ggplot(table_aiglefin_i, aes(x = fitted(M_i_A_c) ,y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Aiglefin modèle complet", subtitle = "avec selection a priori")+
+  theme_classic()
+
+
+ggplot(table_morue_i, aes(x = fitted(M_i_Mo_c), y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Morue modèle complet", subtitle = "avec selection a priori") +
+  theme_classic()
+
+
+ggplot(table_merlan_i, aes(x = fitted(M_i_Me_c), y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Merlan modèle complet", subtitle = "avec selection a priori") +
+  theme_classic()
+
+
+
+ggplot(table_plie_i, aes(x = fitted(M_i_P_c), y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Plie modèle complet", subtitle = "avec selection a priori") +
+  theme_classic()
+
+
+ggplot(table_lieu_i, aes(x = fitted(M_i_L_c), y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Lieu modèle complet", subtitle = "avec selection a priori") +
+  theme_classic()
+
+
+
+ggplot(table_maquereau_i, aes(x = fitted(M_i_Ma_c), y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Maquereau modèle complet", subtitle = "avec selection a priori") +
+  theme_classic()
+
+
+
+ggplot(table_sprat_i, aes(x = fitted(M_i_S_c), y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Sprat modèle complet", subtitle = "avec selection a priori") +
+  theme_classic()
+
+
+ggplot(table_tacaud_i, aes(x = fitted(M_i_T_c), y = sexe_numerique)) +
+  geom_point(alpha = 0.1, position = "jitter") +
+  ggtitle("Observations vs predictions Tacaud modèle complet", subtitle = "avec selection a priori") +
+  theme_classic()
+
+```
+
+```{R}
+ggplot(table_hareng_i[-which(table_hareng_i$Cohorte < 1966 | table_hareng_i$Cohorte == 2021),], aes(x = Cohorte)) +
+  geom_point(aes(y = sexe_numerique), color = "#00AFBB", size = 2, shape = 5) +
+  geom_point(aes(y = fitted(M_i_H_c), colour = "blue", alpha = 0.1))
+
+
+ggplot(table_hareng_i[-which(table_hareng_i$Cohorte < 1966 | table_hareng_i$Cohorte == 2021),], aes(x = Cohorte)) +
+  geom_point(aes( y = fitted(M_i_H_c), colour = "red", alpha = 0.1)) +
+  geom_point(data = table_hareng_i, aes(y = as.integer(sexe_numerique)))
+ # geom_point(data = table_hareng_i[-which(table_hareng_i$Cohorte < 1966 | table_hareng_i$Cohorte == 2021),], aes(y = sexe_numerique, colour = "blue"))
+class(table_hareng_i$sexe_numerique)
+
+ggplot(table_hareng_i[-which(table_hareng_i$Cohorte < 1966 | table_hareng_i$Cohorte == 2021),], aes(x = Cohorte)) +
+  geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_H_c), colour = "green", alpha = 0.1)) 
+  
+summary(as.integer(table_hareng_i$sexe_numerique))
+summary(table_hareng_i$sexe_numerique)
+
+
+ggplot(table_hareng_i[-which(table_hareng_i$Cohorte < 1966 | table_hareng_i$Cohorte == 2021),], aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+ggplot(table_hareng_i[-which(table_hareng_i$Cohorte < 1966 | table_hareng_i$Cohorte == 2021),], aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.01, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+  
+##############  
+  
+ggplot(table_aiglefin_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_A_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+ggplot(table_aiglefin_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.01, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+#################
+ggplot(table_morue_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_Mo_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+ggplot(table_morue_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.05, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+#################
+ggplot(table_merlan_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_Me_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+ggplot(table_merlan_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.05, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+###########
+ggplot(table_plie_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_P_c)), colour = "#339966", alpha = 0.3, shape = 5) +
+  theme_classic()
+
+ggplot(table_plie_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.05, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+
+
+###########
+ggplot(table_lieu_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_L_c)), colour = "#339966", alpha = 0.5, shape = 5) +
+  theme_classic()
+
+ggplot(table_lieu_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.05, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+###########
+ggplot(table_maquereau_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_Ma_c)), colour = "#339966", alpha = 0.5, shape = 5) +
+  theme_classic()
+
+ggplot(table_maquereau_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.05, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+###########
+ggplot(table_sprat_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_S_c)), colour = "#339966", alpha = 0.5, shape = 5) +
+  theme_classic()
+
+ggplot(table_sprat_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.05, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+###########
+ggplot(table_tacaud_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_T_c)), colour = "#339966", alpha = 0.5, shape = 5) +
+  theme_classic()
+
+ggplot(table_tacaud_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.05, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+
+###########
+ggplot(table_LS_i, aes(x = Cohorte)) +
+ # geom_point(aes( y = as.character.numeric_version(sexe_numerique), colour = "red", alpha = 0.01), position = "jitter") +
+  geom_point(aes( y = fitted(M_i_LS_c)), colour = "#339966", alpha = 0.5, shape = 5) +
+  theme_classic()
+
+ggplot(table_LS_i, aes(x = Cohorte, color = sexe_numerique)) +
+  geom_point(aes( y = (sexe_numerique), colour = sexe_numerique),  alpha = 0.1, position = "jitter") +
+  #geom_point(aes( y = fitted(M_i_H_c)), colour = "#339966", alpha = 0.1, shape = 5) +
+  theme_classic()
+```
+
