@@ -50,9 +50,10 @@ knitr::opts_chunk$set(root.dir = file.path(proj_root, "SR_Estimation"))
 ### Data importation
 
 ```{r}
-table_cohortes <- read.csv("archives_2022/data/table_cohorte_procedure_selection_2.csv", 
+getwd()
+table_cohortes <- read.csv("/home/mathis/NorthSeaSR_Estimation/SR_Estimation/archives_2022/data/table_cohorte_procedure_selection_2.csv", 
                            header = TRUE, sep = ",",  na ="NA", stringsAsFactors = FALSE)
-table_donnees <- read.csv("archives_2022/data/tableau_donnees_procedure_selection_2.csv", 
+table_donnees <- read.csv("/home/mathis/NorthSeaSR_Estimation/SR_Estimation/archives_2022/data/tableau_donnees_procedure_selection_2.csv", 
                           header = TRUE, sep = ",",  na ="NA", stringsAsFactors = FALSE)
 ```
 
