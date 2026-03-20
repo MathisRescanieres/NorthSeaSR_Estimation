@@ -16,7 +16,8 @@ data <- raw_data %>%
   mutate(
     Sex = as.factor(Sex),
     Maturity = as.factor(Maturity),
-    Species = as.factor(Species)
+    Species = as.factor(Species),
+    Area = as.factor(Area)
   ) %>%
   filter(
     !is.na(Age),
@@ -30,7 +31,44 @@ data <- raw_data %>%
     Cohorte = Year - Age,
     Species = droplevels(Species),
     Maturity = droplevels(Maturity),
-    Sex = droplevels(Sex)
+    Sex = droplevels(Sex)) %>%
+  mutate(Sex = na_if(as.character(Sex), "U"),
+         Sex = as.factor(Sex),
+         Sex = droplevels(Sex)) %>%
+  filter(!is.na(Sex))
+
+data <- data %>%
+  mutate(
+    Numeric_maturity = case_when(
+      # Simple digit system
+      Maturity == "1"  ~ 0L,  # Immature
+      Maturity == "2"  ~ 1L,  # Mature
+      Maturity == "3"  ~ 1L,
+      Maturity == "4"  ~ 1L,
+      Maturity == "5"  ~ 1L,
+      Maturity == "6"  ~ 1L,
+      # ICES system
+      Maturity == "61" ~ 0L,  # Immature
+      Maturity == "62" ~ 1L,  # Mature
+      Maturity == "63" ~ 1L,
+      Maturity == "64" ~ 1L,
+      Maturity == "65" ~ 1L,
+      Maturity == "66" ~ 1L,
+      # Alphanumeric system
+      Maturity == "A"  ~ 0L,  # Immature
+      Maturity == "B"  ~ 1L,  # Mature
+      Maturity == "Ba" ~ 1L,
+      Maturity == "Bb" ~ 1L,
+      Maturity == "C"  ~ 1L,
+      Maturity == "Ca" ~ 1L,
+      Maturity == "Cb" ~ 1L,
+      Maturity == "D"  ~ 1L,
+      Maturity == "Da" ~ 1L,
+      Maturity == "E"  ~ 1L,
+      Maturity == "F"  ~ 1L,
+      Maturity == "I"  ~ 0L,  # Immature
+      Maturity == "M"  ~ 1L,  # Mature
+    )
   )
 
 cat("\nDimensions before filtering NAs :", nrow(raw_data), "x", ncol(raw_data), "\n")
