@@ -8,5 +8,6 @@
 *.nc
 *.rds
 *.pdf
+*.txt
 temp_gif/
 temp_var_gif/
