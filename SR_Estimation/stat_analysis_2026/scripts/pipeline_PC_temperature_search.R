@@ -15,7 +15,7 @@ SEED       <- 42
 TEST_RATIO <- 0.2
 NFOLDS     <- 3
 TARGET     <- "Numeric_sex"
-OUT_DIR    <- "../results_PC6_to_PC10"
+OUT_DIR    <- "../results_PC1_to_PC5"
 
 ALPHAS <- c(
   "L1"         = 1,
@@ -28,7 +28,7 @@ FORMULA_BASE <- ~ Age_sc + LngtClassGrouped_sc + Age_x_Lngt_sc +
 # ================================================================
 # PREPARATION DES DONNEES
 # ================================================================
-pc_keep     <- 6:10
+pc_keep     <- 1:5
 var_keep    <- c("T_mean")
 pc_pattern  <- paste0("_PC", pc_keep, "_", collapse = "|")
 var_pattern <- paste0("^(", paste(var_keep, collapse = "|"), ")")
@@ -212,8 +212,8 @@ for (sp in species_list) {
       )
 
     if (nrow(df_plot) > 0) {
-      best_row  <- df_plot %>% slice_max(delta_auc, n = 1, with_ties = FALSE)
-      worst_row <- df_plot %>% slice_min(delta_auc, n = 1, with_ties = FALSE)
+      best_row  <- df_plot %>% slice_max(abs(delta_auc), n = 1, with_ties = FALSE)
+      worst_row <- df_plot %>% slice_min(abs(delta_auc), n = 1, with_ties = FALSE)
 
       p <- ggplot(df_plot,
                   aes(x = factor(combo_id), y = delta_auc, fill = couleur)) +
@@ -258,7 +258,7 @@ for (sp in species_list) {
 
   # ── Summary txt ──
   best_global <- sp_results %>%
-    slice_max(delta_auc, n = 1, with_ties = FALSE)
+    slice_max(abs(delta_auc), n = 1, with_ties = FALSE)
 
   summary_lines <- c(
     "═══════════════════════════════════════════",
@@ -270,8 +270,8 @@ for (sp in species_list) {
   for (alpha_name in names(ALPHAS)) {
     df_a <- sp_results %>% filter(alpha_name == !!alpha_name)
     if (nrow(df_a) == 0) next
-    br <- df_a %>% slice_max(delta_auc, n = 1, with_ties = FALSE)
-    wr <- df_a %>% slice_min(delta_auc, n = 1, with_ties = FALSE)
+    br <- df_a %>% slice_max(abs(delta_auc), n = 1, with_ties = FALSE)
+    wr <- df_a %>% slice_min(abs(delta_auc), n = 1, with_ties = FALSE)
     summary_lines <- c(summary_lines,
       paste0("── ", alpha_name, " (alpha=", ALPHAS[[alpha_name]], ") ──"),
       paste0("   AUC baseline    : ", round(unique(df_a$auc_base), 4)),
