@@ -18,11 +18,9 @@ TARGET     <- "Numeric_sex"
 OUT_DIR    <- "../results_mensual_PC1_to_PC5"
 
 ALPHAS <- c(
-  # "L1"         = 1,
-  # "L2"         = 0,
-  # "ElasticNet" = 0.5,
-  "L1"         = 1
-)
+  "L1"         = 1,
+  "L2"         = 0,
+  "ElasticNet" = 0.5)
 
 FORMULA_BASE <- ~ Age_sc + LngtClassGrouped_sc + Age_x_Lngt_sc +
                   Cohorte_num_sc + Area + Cohorte_fact - 1
@@ -30,7 +28,7 @@ FORMULA_BASE <- ~ Age_sc + LngtClassGrouped_sc + Age_x_Lngt_sc +
 # ================================================================
 # PREPARATION DES DONNEES
 # ================================================================
-pc_keep     <- 1:63
+pc_keep     <- 1:5
 var_keep    <- c("T_mean")
 pc_pattern  <- paste0("_PC", pc_keep, "_", collapse = "|")
 var_pattern <- paste0("^(", paste(var_keep, collapse = "|"), ")")
