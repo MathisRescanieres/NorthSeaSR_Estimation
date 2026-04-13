@@ -6,7 +6,7 @@
 #
 # Usage :
 #   source("pipeline_eof_cohort.R")
-#   data_eof_flatten <- run_eof_pipeline(n_pc_start = 1, n_pc_end = 17)
+#   data_eof_flatten <- run_eof_pipeline(n_pc_start = 1, n_pc_end = 18)
 # ==============================================================================
 
 library(dplyr)
@@ -14,7 +14,16 @@ library(tidyr)
 library(lubridate)
 library(purrr)
 
-# ── Fenêtre de 18 mois (interne) ──────────────────────────────────────────────
+# -- Création d'un dossier de sauvegarde ---
+ensure_dir <- function(dir) {
+  if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
+}
+
+# EOF
+dir_eof <- "../results_cohort_PC1_to_PC5/EOF"
+ensure_dir(dir_eof)
+
+# -- Fenêtre de 18 mois (interne) --
 .month_window <- tibble(
   offset      = c(-3, -2, -1, 0:11, 12, 13, 14),
   month_label = c(
@@ -25,8 +34,11 @@ library(purrr)
   )
 )
 
-# ── 1. Construction des EOFs par cohorte pour un signal ───────────────────────
-.build_eof_list <- function(df_T, val_col, prefix, n_pc_start, n_pc_end) {
+# -- 1. Construction des EOFs par cohorte pour un signal --
+.build_eof_list <- function(df_T, val_col, prefix, n_pc_start, n_pc_end, out_dir = NULL) {
+
+  ensure_dir <- function(dir) if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
+  if (!is.null(out_dir)) ensure_dir(out_dir)
 
   all_years    <- sort(unique(year(df_T$time)))
   cohort_years <- all_years[
@@ -48,19 +60,60 @@ library(purrr)
     }
 
     eof_formula  <- as.formula(paste0(val_col, " ~ lon + lat | time"))
-    eof_list[[i]] <- tryCatch(
+    eof_obj <- tryCatch(
       metR::EOF(eof_formula, data = df_win, n = n_pc_start:n_pc_end),
       error = function(e) {
         warning("Cohorte ", coh, " (", prefix, ") : erreur EOF — ", conditionMessage(e))
         NULL
       }
     )
+
+    if (!is.null(eof_obj)) {
+      eof_list[[i]] <- eof_obj
+
+      if (!is.null(out_dir)) {
+        # Dossiers de sortie
+        dir_map <- file.path(out_dir, "maps")
+        dir_ts  <- file.path(out_dir, "timeseries")
+        ensure_dir(dir_map)
+        ensure_dir(dir_ts)
+
+        # Sauvegarde cartes et séries pour chaque PC
+        for (pc_name in unique(eof_obj$left$PC)) {
+          # --- Carte EOF ---
+          df_map <- eof_obj$left %>% filter(PC == pc_name)
+          file_name_map <- file.path(dir_map, paste0(prefix, "_coh_", coh, "_", pc_name, ".png"))
+          
+          p_map <- ggplot(df_map, aes(x = lon, y = lat, fill = .data[[val_col]])) +
+            geom_raster() +
+            scale_fill_viridis_c(option = "plasma") +
+            coord_fixed() +
+            labs(title = paste0(prefix, " cohorte ", coh, " ", pc_name)) +
+            theme_minimal()
+          
+          ggsave(file_name_map, p_map, width = 6, height = 4)
+
+          # --- Série temporelle PC ---
+          df_ts <- eof_obj$right %>% select(time, PC, all_of(val_col)) %>%
+                   filter(PC == pc_name)
+          
+          file_name_ts <- file.path(dir_ts, paste0(prefix, "_coh_", coh, "_", pc_name, "_ts.png"))
+          
+          p_ts <- ggplot(df_ts, aes(x = time, y = .data[[val_col]], color = PC)) +
+            geom_line() +
+            labs(title = paste0(prefix, " cohorte ", coh, " ", pc_name, " time series")) +
+            theme_minimal()
+          
+          ggsave(file_name_ts, p_ts, width = 6, height = 4)
+        }
+      }
+    }
   }
 
   Filter(Negate(is.null), eof_list)
 }
 
-# ── 2. Pivot wide des scores d'un objet EOF ───────────────────────────────────
+# -- 2. Pivot wide des scores d'un objet EOF --
 .extract_wide <- function(eof_obj, prefix) {
   val_col <- attr(eof_obj, "value.var")
   eof_obj$right %>%
@@ -72,7 +125,7 @@ library(purrr)
     )
 }
 
-# ── 3. Fusion des 3 signaux par cohorte → liste eof_all_sig ──────────────────
+# -- 3. Fusion des 3 signaux par cohorte → liste eof_all_sig --
 .build_eof_all_sig <- function(eof_list_T_mean, eof_list_T_var, eof_list_T_grad) {
 
   cohorts_all <- Reduce(intersect, list(
@@ -100,7 +153,7 @@ library(purrr)
   eof_all_sig
 }
 
-# ── 4. Pivot final : eof_all_sig → 1 ligne par cohorte ───────────────────────
+# -- 4. Pivot final : eof_all_sig → 1 ligne par cohorte --
 .flatten_eof_all_sig <- function(eof_all_sig) {
 
   cohorts   <- names(eof_all_sig)
@@ -129,8 +182,8 @@ library(purrr)
 #
 # Paramètres :
 #   n_pc_start  : première composante retenue (défaut : 1)
-#   n_pc_end    : dernière composante retenue — max 17 pour une fenêtre 18 mois
-#                 (défaut : 17)
+#   n_pc_end    : dernière composante retenue — max 18 pour une fenêtre 18 mois
+#                 (défaut : 18)
 #   df_T_mean   : data.frame lon / lat / time / T_mean
 #   df_T_var    : data.frame lon / lat / time / T_var
 #   df_T_grad   : data.frame lon / lat / time / T_grad
@@ -140,23 +193,23 @@ library(purrr)
 #                      colonnes : year | <signal>_<PC>_<mois>
 
 run_eof_pipeline <- function(n_pc_start = 1,
-                             n_pc_end   = 17,
+                             n_pc_end   = 18,
                              df_T_mean  = df_T_mean,
                              df_T_var   = df_T_var,
                              df_T_grad  = df_T_grad) {
 
-  stopifnot(n_pc_end <= 17, n_pc_start >= 1, n_pc_start <= n_pc_end)
+  stopifnot(n_pc_end <= 18, n_pc_start >= 1, n_pc_start <= n_pc_end)
 
   cat(">>> [1/4] EOFs T_mean\n")
-  eof_list_T_mean <- .build_eof_list(df_T_mean, "T_mean", "T_mean", n_pc_start, n_pc_end)
+  eof_list_T_mean <- .build_eof_list(df_T_mean, "T_mean", "T_mean", n_pc_start, n_pc_end, out_dir = dir_eof)
   cat("    →", length(eof_list_T_mean), "EOFs calculées\n")
 
   cat(">>> [2/4] EOFs T_var\n")
-  eof_list_T_var  <- .build_eof_list(df_T_var,  "T_var",  "T_var",  n_pc_start, n_pc_end)
+  eof_list_T_var  <- .build_eof_list(df_T_var,  "T_var",  "T_var",  n_pc_start, n_pc_end, out_dir = dir_eof)
   cat("    →", length(eof_list_T_var), "EOFs calculées\n")
 
   cat(">>> [3/4] EOFs T_grad\n")
-  eof_list_T_grad <- .build_eof_list(df_T_grad, "T_grad", "T_grad", n_pc_start, n_pc_end)
+  eof_list_T_grad <- .build_eof_list(df_T_grad, "T_grad", "T_grad", n_pc_start, n_pc_end, out_dir = dir_eof)
   cat("    →", length(eof_list_T_grad), "EOFs calculées\n")
 
   cat(">>> [4/4] Fusion & pivot\n")

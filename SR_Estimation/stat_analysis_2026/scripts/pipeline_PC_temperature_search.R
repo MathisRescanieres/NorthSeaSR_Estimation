@@ -13,14 +13,16 @@ library(dplyr)
 # ================================================================
 SEED       <- 42
 TEST_RATIO <- 0.2
-NFOLDS     <- 3
+NFOLDS     <- 10
 TARGET     <- "Numeric_sex"
-OUT_DIR    <- "../results_PC6_to_PC10"
+OUT_DIR    <- "../results_mensual_PC1_to_PC5"
 
 ALPHAS <- c(
-  "L1"         = 1,
-  "L2"         = 0,
-  "ElasticNet" = 0.5)
+  # "L1"         = 1,
+  # "L2"         = 0,
+  # "ElasticNet" = 0.5,
+  "L1"         = 1
+)
 
 FORMULA_BASE <- ~ Age_sc + LngtClassGrouped_sc + Age_x_Lngt_sc +
                   Cohorte_num_sc + Area + Cohorte_fact - 1
@@ -28,7 +30,7 @@ FORMULA_BASE <- ~ Age_sc + LngtClassGrouped_sc + Age_x_Lngt_sc +
 # ================================================================
 # PREPARATION DES DONNEES
 # ================================================================
-pc_keep     <- 6:10
+pc_keep     <- 1:63
 var_keep    <- c("T_mean")
 pc_pattern  <- paste0("_PC", pc_keep, "_", collapse = "|")
 var_pattern <- paste0("^(", paste(var_keep, collapse = "|"), ")")
@@ -91,9 +93,12 @@ cat("\nNombre de combinaisons :", N_COMBOS, "\n")
 .fit_auc <- function(X_train, y_train, X_test, y_test, alpha, nfolds) {
   cv_fit <- tryCatch(
     cv.glmnet(
-      x = X_train, y = y_train,
-      family = "binomial", alpha = alpha,
-      nfolds = nfolds, type.measure = "deviance"
+      x = X_train, 
+      y = y_train,
+      family = "binomial", 
+      alpha = alpha,
+      nfolds = nfolds, 
+      type.measure = "deviance"
     ),
     error = function(e) { cat("    [ERROR cv.glmnet]", conditionMessage(e), "\n"); NULL }
   )
