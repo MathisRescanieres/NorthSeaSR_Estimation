@@ -1,12 +1,11 @@
 load("../scripts/env_ML_models.RData")
 
 # ================================================================
-# PIPELINE : Modèle température complet — XGBoost (OPTIMISÉ RAM)
+# PIPELINE : XGBoost LOW MEMORY (JOIN PAR ESPECE)
 # ================================================================
 
 library(xgboost)
 library(pROC)
-library(ggplot2)
 library(dplyr)
 library(Matrix)
 
@@ -37,7 +36,7 @@ FORMULA_BASE <- ~ Age_sc + LngtClassGrouped_sc + Age_x_Lngt_sc +
                   Cohorte_num_sc + Area + Cohorte_fact - 1
 
 # ================================================================
-# PREPARATION DES DONNEES
+# PREPARATION COLONNES TEMP (SANS JOIN GLOBAL)
 # ================================================================
 pc_keep     <- 1:63
 var_keep    <- c("T")
@@ -48,26 +47,8 @@ var_pattern <- paste0("^(", paste(var_keep, collapse = "|"), ")")
 cols_keep <- c("year", grep(pc_pattern, names(data_eof_flatten), value = TRUE))
 cols_keep <- cols_keep[grepl(var_pattern, cols_keep) | cols_keep == "year"]
 
-data_model_temp <- data_expanded %>%
-  left_join(
-    data_eof_flatten %>% select(all_of(cols_keep)),
-    by = c("Cohorte_num" = "year")
-  )
-
-data_full <- data_model_temp %>%
-  mutate(Age_x_Lngt_sc = as.numeric(scale(Age_sc * LngtClassGrouped_sc)))
-
-data_base <- data_expanded %>%
-  mutate(Age_x_Lngt_sc = as.numeric(scale(Age_sc * LngtClassGrouped_sc)))
-
-# -- Groupes PC --
-PC_GROUPS <- lapply(pc_keep, function(k) {
-  cols <- grep(paste0("_PC", k, "_"), colnames(data_model_temp), value = TRUE)
-  cols[grepl(var_pattern, cols)]
-})
-names(PC_GROUPS) <- paste0("PC", pc_keep)
-
-all_temp_cols <- unlist(PC_GROUPS, use.names = FALSE)
+# noms des colonnes température uniquement
+all_temp_cols <- cols_keep[cols_keep != "year"]
 
 cat("Total colonnes température :", length(all_temp_cols), "\n")
 
@@ -92,66 +73,65 @@ cat("Total colonnes température :", length(all_temp_cols), "\n")
 }
 
 .fit_auc_xgb <- function(X_train, y_train, X_test, y_test,
-params, nrounds_max, early_stop, nfolds, seed) {
+                         params, nrounds_max, early_stop, nfolds, seed) {
 
-y_train <- as.numeric(y_train)
-y_test <- as.numeric(y_test)
+  y_train <- as.numeric(y_train)
+  y_test  <- as.numeric(y_test)
 
-dtrain <- xgb.DMatrix(data = X_train, label = y_train)
-dtest <- xgb.DMatrix(data = X_test, label = y_test)
+  dtrain <- xgb.DMatrix(data = X_train, label = y_train)
+  dtest  <- xgb.DMatrix(data = X_test,  label = y_test)
 
-if (nfolds > 1) {
+  if (nfolds > 1) {
 
-  set.seed(seed)
-  cv_fit <- xgb.cv(
-    params = params,
-    data = dtrain,
-    nrounds = nrounds_max,
-    nfold = nfolds,
-    early_stopping_rounds = early_stop,
-    verbose = 0,
-    stratified = TRUE
-  )
+    set.seed(seed)
+    cv_fit <- xgb.cv(
+      params = params,
+      data = dtrain,
+      nrounds = nrounds_max,
+      nfold = nfolds,
+      early_stopping_rounds = early_stop,
+      verbose = 0,
+      stratified = TRUE
+    )
 
-  best_round <- cv_fit$best_iteration
+    best_round <- cv_fit$best_iteration
 
-  if (is.null(best_round) || is.na(best_round) || best_round == 0) {
-    best_round <- which.max(cv_fit$evaluation_log$test_auc_mean)
+    if (is.null(best_round) || is.na(best_round) || best_round == 0) {
+      best_round <- which.max(cv_fit$evaluation_log$test_auc_mean)
+    }
+
+  } else {
+
+    model <- xgb.train(
+      params = params,
+      data = dtrain,
+      nrounds = nrounds_max,
+      evals = list(val = dtest),
+      early_stopping_rounds = early_stop,
+      verbose = 0
+    )
+
+    best_round <- model$best_iteration
+
+    if (is.null(best_round) || is.na(best_round) || best_round == 0) {
+      best_round <- nrounds_max
+    }
   }
 
-} else {
-
-  model <- xgb.train(
+  final_model <- xgb.train(
     params = params,
     data = dtrain,
-    nrounds = nrounds_max,
-    evals = list(val = dtest),
-    early_stopping_rounds = early_stop,
+    nrounds = best_round,
     verbose = 0
   )
 
-  best_round <- model$best_iteration
+  preds <- predict(final_model, dtest)
+  auc_val <- as.numeric(auc(roc(y_test, preds, quiet = TRUE)))
 
-  if (is.null(best_round) || is.na(best_round) || best_round == 0) {
-    best_round <- nrounds_max
-  }
-}
+  rm(dtrain, dtest, final_model)
+  gc()
 
-final_model <- xgb.train(
-params = params,
-data = dtrain,
-nrounds = best_round,
-verbose = 0
-)
-
-preds <- predict(final_model, dtest)
-
-auc_val <- as.numeric(auc(roc(y_test, preds, quiet = TRUE)))
-
-rm(dtrain, dtest, final_model)
-gc()
-
-list(auc = auc_val, best_nround = best_round)
+  list(auc = auc_val, best_nround = best_round)
 }
 
 # ================================================================
@@ -171,14 +151,15 @@ for (sp in species_list) {
   sp_dir  <- file.path(OUT_DIR, sp_safe)
   dir.create(sp_dir, recursive = TRUE, showWarnings = FALSE)
 
-  data_sp_base <- data_base %>% filter(Species == sp)
-  data_sp_full <- data_full %>% filter(Species == sp)
+  # ================= BASE DATA =================
+  data_sp_base <- data_expanded %>%
+    filter(Species == sp) %>%
+    mutate(Age_x_Lngt_sc = as.numeric(scale(Age_sc * LngtClassGrouped_sc)))
 
   spl_base <- .stratified_split(data_sp_base, TARGET, TEST_RATIO, SEED)
-  spl_full <- .stratified_split(data_sp_full, TARGET, TEST_RATIO, SEED)
 
-  # ================= BASE =================
-  cat("  BASE model.matrix...\n")
+  # ================= BASE MODEL =================
+  cat("  BASE...\n")
 
   X_base_train <- sparse.model.matrix(FORMULA_BASE, data = spl_base$train)
   X_base_test  <- sparse.model.matrix(FORMULA_BASE, data = spl_base$test)
@@ -199,14 +180,20 @@ for (sp in species_list) {
   rm(X_base_train, X_base_test)
   gc()
 
-  # ================= FULL TEMP =================
-  cat("  FULL TEMP...\n")
+  # ================= FULL TEMP (JOIN ICI) =================
+  cat("  FULL TEMP (join par espèce)...\n")
 
-  # temp_train <- Matrix(data.matrix(spl_full$train[, all_temp_cols]), sparse = TRUE)
-  # temp_test <- Matrix(data.matrix(spl_full$test[, all_temp_cols]), sparse = TRUE)
+  data_sp_full <- data_sp_base %>%
+    left_join(
+      data_eof_flatten %>% select(all_of(cols_keep)),
+      by = c("Cohorte_num" = "year")
+    )
 
+  spl_full <- .stratified_split(data_sp_full, TARGET, TEST_RATIO, SEED)
+
+  # matrices temp
   temp_train <- sparse.model.matrix(~ . - 1, data = spl_full$train[, all_temp_cols])
-  temp_test <- sparse.model.matrix(~ . - 1,data = spl_full$test[, all_temp_cols])
+  temp_test  <- sparse.model.matrix(~ . - 1, data = spl_full$test[, all_temp_cols])
 
   X_full_train <- sparse.model.matrix(FORMULA_BASE, data = spl_full$train)
   X_full_test  <- sparse.model.matrix(FORMULA_BASE, data = spl_full$test)
@@ -232,7 +219,9 @@ for (sp in species_list) {
 
   cat("  AUC temp =", auc_full, "| Δ =", delta, "\n")
 
+  # nettoyage massif
   rm(
+    data_sp_full, spl_full,
     X_train_full_temp, X_test_full_temp,
     temp_train, temp_test,
     X_full_train, X_full_test
