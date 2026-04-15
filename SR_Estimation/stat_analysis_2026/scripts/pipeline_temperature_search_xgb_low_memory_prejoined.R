@@ -20,6 +20,89 @@ print(files)
 results <- data.frame()
 
 # ================================================================
+# SPLIT
+# ================================================================
+.stratified_split <- function(data_sp, target, test_ratio, seed) {
+  set.seed(seed)
+
+  idx_male   <- which(data_sp[[target]] == 1)
+  idx_female <- which(data_sp[[target]] == 0)
+
+  idx_test <- c(
+    sample(idx_male,   floor(length(idx_male)   * test_ratio)),
+    sample(idx_female, floor(length(idx_female) * test_ratio))
+  )
+
+  list(
+    train = data_sp[-idx_test, ],
+    test  = data_sp[idx_test, ]
+  )
+}
+
+# ================================================================
+# AUC FUNCTION
+# ================================================================
+.fit_auc_xgb <- function(X_train, y_train, X_test, y_test,
+                         params, nrounds_max, early_stop, nfolds, seed) {
+
+  y_train <- as.numeric(y_train)
+  y_test  <- as.numeric(y_test)
+
+  dtrain <- xgb.DMatrix(X_train, label = y_train)
+  dtest  <- xgb.DMatrix(X_test,  label = y_test)
+
+  if (nfolds > 1) {
+
+    set.seed(seed)
+    cv_fit <- xgb.cv(
+      params = params,
+      data = dtrain,
+      nrounds = nrounds_max,
+      nfold = nfolds,
+      early_stopping_rounds = early_stop,
+      verbose = 0,
+      stratified = TRUE
+    )
+
+    best_round <- cv_fit$best_iteration
+    if (is.null(best_round) || is.na(best_round) || best_round == 0) {
+      best_round <- which.max(cv_fit$evaluation_log$test_auc_mean)
+    }
+
+  } else {
+
+    model <- xgb.train(
+      params = params,
+      data = dtrain,
+      nrounds = nrounds_max,
+      evals = list(val = dtest),
+      early_stopping_rounds = early_stop,
+      verbose = 0
+    )
+
+    best_round <- model$best_iteration
+    if (is.null(best_round) || is.na(best_round) || best_round == 0) {
+      best_round <- nrounds_max
+    }
+  }
+
+  final_model <- xgb.train(
+    params = params,
+    data = dtrain,
+    nrounds = best_round,
+    verbose = 0
+  )
+
+  preds <- predict(final_model, dtest)
+  auc_val <- as.numeric(auc(roc(y_test, preds, quiet = TRUE)))
+
+  rm(dtrain, dtest, final_model)
+  gc()
+
+  list(auc = auc_val, best_nround = best_round)
+}
+
+# ================================================================
 # LOOP
 # ================================================================
 for (i in seq_along(files)) {
