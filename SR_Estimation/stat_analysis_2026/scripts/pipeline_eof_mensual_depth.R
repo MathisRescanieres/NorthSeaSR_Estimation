@@ -1,0 +1,200 @@
+# ==============================================================================
+# pipeline_eof_interannual_depth.R
+# ------------------------------------------------------------------------------
+# Construit data_eof_flatten : 1 ligne par cohorte, colonnes = scores EOF
+# pour chaque combinaison (mois x profondeur x PC)
+#
+# Usage :
+#   source("pipeline_eof_interannual_depth.R")
+#   data_eof_flatten <- run_eof_pipeline(df = df, n_pc_start = 1, n_pc_end = 63)
+# ==============================================================================
+
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(purrr)
+library(metR)
+
+ensure_dir <- function(dir) {
+  if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
+}
+
+dir_eof <- "../results_eof_depth/EOF"
+ensure_dir(dir_eof)
+
+# -- Fenêtre de 18 mois --
+.month_window <- tibble(
+  offset      = c(-3, -2, -1, 0:11, 12, 13, 14),
+  month_label = c(
+    "oct_m1", "nov_m1", "dec_m1",
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
+    "jan_p1", "feb_p1", "mar_p1"
+  )
+) %>%
+  mutate(
+    month_num  = month(as.Date("2000-01-01") %m+% months(offset)),
+    year_shift = case_when(
+      grepl("_m1$", month_label) ~ -1L,
+      grepl("_p1$", month_label) ~  1L,
+      TRUE                       ~  0L
+    )
+  )
+
+# ================================================================
+# 1. EOF par mois ET par couche de profondeur
+# ================================================================
+.build_monthly_depth_eof_list <- function(df, n_pc_start, n_pc_end,
+                                           out_dir = NULL) {
+  if (!is.null(out_dir)) ensure_dir(out_dir)
+
+  depth_levels <- sort(unique(df$depth))
+  cat("    Couches détectées :", depth_levels, "\n")
+
+  eof_list <- list()
+
+  for (m in 1:12) {
+    df_m <- df %>% filter(month(time) == m)
+
+    if (length(unique(df_m$time)) < 2) {
+      warning("Mois ", m, " : pas assez de pas de temps — ignoré.")
+      next
+    }
+
+    for (d in depth_levels) {
+      key   <- sprintf("month_%02d_depth_%g", m, d)
+
+      df_md <- df_m %>% filter(depth == d)
+
+      # Vérification années complètes
+      n_grid <- df_md %>% filter(time == first(df_md$time)) %>% nrow()
+      valid_times <- df_md %>%
+        group_by(time) %>%
+        summarise(n = n(), .groups = "drop") %>%
+        filter(n == n_grid) %>%
+        pull(time)
+
+      df_md <- df_md %>% filter(time %in% valid_times)
+
+      if (length(unique(df_md$time)) < 2) {
+        warning("Mois ", m, " depth ", d, " : pas assez d'années complètes — ignoré.")
+        next
+      }
+
+      eof_obj <- tryCatch(
+        metR::EOF(temp ~ lon + lat | time, data = df_md, n = n_pc_start:n_pc_end),
+        error = function(e) {
+          warning("Mois ", m, " depth ", d, " : erreur EOF — ", conditionMessage(e))
+          NULL
+        }
+      )
+
+      if (!is.null(eof_obj)) {
+        eof_list[[key]] <- eof_obj
+        cat("    ✓ month", sprintf("%02d", m), "| depth", d, "\n")
+      }
+    }
+  }
+
+  cat("    →", length(eof_list), "combinaisons (mois x profondeur) calculées\n")
+  eof_list
+}
+
+# ================================================================
+# 2. Extraction des scores
+# ================================================================
+.extract_scores <- function(eof_obj) {
+  eof_obj$right %>%
+    as_tibble() %>%
+    mutate(year = year(time)) %>%
+    select(-time) %>%
+    pivot_wider(
+      names_from  = PC,
+      values_from = temp,
+      names_prefix = "T_"
+    )
+}
+
+# ================================================================
+# 3. Flatten : 1 ligne par cohorte
+#    Nommage final : T_PC1_jan_d10, T_PC2_oct_m1_d200, etc.
+# ================================================================
+.flatten_monthly_depth_scores <- function(eof_list, cohort_years) {
+
+  depth_levels <- sort(unique(
+    as.numeric(gsub(".*_depth_", "", names(eof_list)))
+  ))
+
+  map_dfr(cohort_years, function(coh) {
+
+    row_vals <- list(year = coh)
+
+    for (j in seq_len(nrow(.month_window))) {
+
+      m_num     <- .month_window$month_num[j]
+      lbl       <- .month_window$month_label[j]
+      target_yr <- coh + .month_window$year_shift[j]
+
+      for (d in depth_levels) {
+
+        key      <- sprintf("month_%02d_depth_%g", m_num, d)
+        d_suffix <- paste0("d", d)
+
+        if (!key %in% names(eof_list)) next
+
+        sc <- .extract_scores(eof_list[[key]]) %>%
+          filter(year == target_yr) %>%
+          select(-year)
+
+        if (nrow(sc) == 0) {
+          sc <- .extract_scores(eof_list[[key]]) %>%
+            select(-year) %>%
+            slice(0) %>%
+            add_row()
+        }
+
+        # Nommage : T_PC1 --> T_PC1_jan_d10
+        renamed <- sc %>%
+          rename_with(~ paste0(., "_", lbl, "_", d_suffix))
+
+        row_vals <- c(row_vals, as.list(renamed[1, , drop = FALSE]))
+      }
+    }
+
+    as_tibble(row_vals)
+  })
+}
+
+# ================================================================
+# FONCTION PRINCIPALE
+# ================================================================
+run_eof_pipeline <- function(df,
+                              n_pc_start = 1,
+                              n_pc_end   = 63) {
+
+  stopifnot(
+    n_pc_start >= 1,
+    n_pc_start <= n_pc_end,
+    all(c("lon", "lat", "depth", "time", "temp") %in% names(df))
+  )
+
+  cat(">>> [1/3] EOFs interannuelles (temp brute, par mois x profondeur)\n")
+  eof_list <- .build_monthly_depth_eof_list(
+    df, n_pc_start, n_pc_end, out_dir = dir_eof)
+
+  cat(">>> [2/3] Extraction des années de cohorte\n")
+  cohort_years <- sort(unique(unlist(
+    lapply(eof_list, function(obj) year(obj$right$time))
+  )))
+  cat("    →", length(cohort_years), "années :", range(cohort_years), "\n")
+
+  cat(">>> [3/3] Pivot final (1 ligne par cohorte)\n")
+  data_eof_flatten <- .flatten_monthly_depth_scores(eof_list, cohort_years)
+
+  cat("\n✔ Pipeline terminé\n")
+  cat("  Dimensions data_eof_flatten :", nrow(data_eof_flatten),
+      "x", ncol(data_eof_flatten), "\n")
+  cat("  Colonnes EOF                :", ncol(data_eof_flatten) - 1, "\n")
+
+  data_eof_flatten
+}

@@ -25,7 +25,7 @@ FORMULA_BASE <- ~ Age_sc + LngtClassGrouped_sc + Age_x_Lngt_sc +
 # PREPARATION DES DONNEES
 # ================================================================
 pc_keep     <- 1:63
-var_keep    <- c("T_mean", "T_var", "T_grad")
+var_keep    <- c("T")
 pc_pattern  <- paste0("_PC", pc_keep, "_", collapse = "|")
 var_pattern <- paste0("^(", paste(var_keep, collapse = "|"), ")")
 cols_keep   <- c("year", grep(pc_pattern, names(data_eof_flatten), value = TRUE))
