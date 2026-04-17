@@ -229,6 +229,9 @@ for (f in files) {
   # ============================================================
   # STOCKAGE
   # ============================================================
+  auc_full <- res_full$auc
+  delta    <- auc_full - auc_base
+
   results_all <- rbind(results_all, data.frame(
     Species     = sp,
     n_temp_col  = length(temp_cols),

@@ -7,6 +7,7 @@ library(tidyr)
 library(lubridate)
 library(purrr)
 library(metR)
+library(ggplot2)
 
 ensure_dir <- function(dir) {
   if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
@@ -14,6 +15,21 @@ ensure_dir <- function(dir) {
 
 dir_eof <- "../results_eof_depth/EOF"
 ensure_dir(dir_eof)
+
+# ================================================================
+# STRUCTURE SORTIE EOF (maps + timeseries par profondeur)
+# ================================================================
+
+dir_maps <- file.path(dir_eof, "maps")
+dir_ts   <- file.path(dir_eof, "timeseries")
+
+ensure_dir(dir_maps)
+ensure_dir(dir_ts)
+
+# --Récupération du label de profondeur
+.get_depth_label <- function(d) {
+  paste0("depth_", gsub("\\.", "_", d))
+}
 
 # -- Fenêtre de 18 mois --
 .month_window <- tibble(
@@ -108,14 +124,77 @@ ensure_dir(dir_eof)
       )
 
       if (!is.null(eof_obj)) {
-        eof_list[[key]] <- eof_obj
-        cat("    ✓ Succès — PCs calculées :",
-            length(unique(eof_obj$right$PC)), "\n")
-      } else {
-        cat("    ✗ ECHEC (eof_obj est NULL)\n")
-      }
-    }
-  }
+        # ====================================
+        # Sauvegarde des cartes et timeseries
+        # ====================================
+
+        depth_label <- .get_depth_label(d)
+        month_label_dir <- sprintf("month_%02d", m)
+
+        dir_map_d <- file.path(dir_maps, month_label_dir, depth_label)
+        dir_ts_d  <- file.path(dir_ts,  month_label_dir, depth_label)
+
+        ensure_dir(dir_map_d)
+        ensure_dir(dir_ts_d)
+
+        val_col <- "temp"
+
+        for (pc_name in unique(eof_obj$left$PC)) {
+
+          # ===========
+          # Carte EOF
+          # ===========
+          df_map <- eof_obj$left %>%
+            filter(PC == pc_name)
+
+          p_map <- ggplot(df_map, aes(x = lon, y = lat, fill = .data[[val_col]])) +
+            geom_raster() +
+            scale_fill_viridis_c(option = "plasma") +
+            coord_fixed() +
+            labs(
+              title = paste0("EOF ", pc_name, " | ", key)
+            ) +
+            theme_minimal()
+
+          file_map <- file.path(
+            dir_map_d,
+            paste0(key, "_", pc_name, ".pdf")
+          )
+
+          ggsave(file_map, p_map, device = "pdf", width = 7, height = 5)
+
+
+          # ===========
+          # Timeseries 
+          # ===========
+          df_ts <- eof_obj$right %>%
+            filter(PC == pc_name)
+
+          p_ts <- ggplot(df_ts, aes(x = time, y = .data[[val_col]])) +
+            geom_line(color = "steelblue") +
+            labs(
+              title = paste0("EOF TS ", pc_name, " | ", key),
+              x = "Time",
+              y = "Amplitude"
+            ) +
+            theme_minimal()
+
+          file_ts <- file.path(
+            dir_ts_d,
+            paste0(key, "_", pc_name, "_ts.pdf")
+          )
+
+          ggsave(file_ts, p_ts, device = "pdf", width = 7, height = 4)
+        }
+
+                eof_list[[key]] <- eof_obj
+                cat("    ✓ Succès — PCs calculées :",
+                    length(unique(eof_obj$right$PC)), "\n")
+              } else {
+                cat("    ✗ ECHEC (eof_obj est NULL)\n")
+              }
+            }
+          }
 
   cat("\n    →", length(eof_list), "combinaisons (mois x profondeur) calculées\n")
   eof_list
