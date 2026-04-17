@@ -1,0 +1,15 @@
+[0] Config.pm:307> INFO - This is Biber 2.19
+[0] Config.pm:310> INFO - Logfile is 'table_larval_depths.blg'
+[38] biber:340> INFO - === Fri Apr 17, 2026, 11:59:52
+[45] Biber.pm:419> INFO - Reading 'table_larval_depths.bcf'
+[73] Biber.pm:979> INFO - Found 9 citekeys in bib section 0
+[79] Biber.pm:4419> INFO - Processing section 0
+[83] Biber.pm:4610> INFO - Looking for bibtex file 'ref.bib' for section 0
+[84] bibtex.pm:1713> INFO - LaTeX decoding ...
+[93] bibtex.pm:1519> INFO - Found BibTeX data source 'ref.bib'
+[142] UCollate.pm:68> INFO - Overriding locale 'fr-FR' defaults 'variable = shifted' with 'variable = non-ignorable'
+[142] UCollate.pm:68> INFO - Overriding locale 'fr-FR' defaults 'normalization = NFD' with 'normalization = prenormalized'
+[142] Biber.pm:4239> INFO - Sorting list 'nty/global//global/global' of type 'entry' with template 'nty' and locale 'fr-FR'
+[142] Biber.pm:4245> INFO - No sort tailoring available for locale 'fr-FR'
+[148] bbl.pm:660> INFO - Writing 'table_larval_depths.bbl' with encoding 'UTF-8'
+[151] bbl.pm:763> INFO - Output to table_larval_depths.bbl

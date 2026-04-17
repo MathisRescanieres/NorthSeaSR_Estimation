@@ -1,0 +1,163 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[backend=biber,style=numeric-comp]{biblatex}
+\addbibresource{ref.bib}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+
+\usepackage[a4paper,
+landscape,
+top=2cm, bottom=2.5cm,
+left=1.5cm, right=1.5cm]{geometry}
+
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{colortbl}
+
+\definecolor{headerblue}{HTML}{1F4E79}
+\definecolor{rowgray}{HTML}{F2F2F2}
+
+% \sp renommé en \espece pour éviter le conflit avec la commande LaTeX native
+\newcommand{\espece}[1]{\textit{#1}}
+
+\title{\textbf{Distribution verticale des larves et localisation des zones de ponte}\\[4pt]
+	\large Synthèse bibliographique sur les 11 espèces cibles}
+\author{}
+\date{}
+
+\begin{document}
+	\maketitle
+	\thispagestyle{empty}
+	
+	\setlength{\tabcolsep}{6pt}
+	\renewcommand{\arraystretch}{1.5}
+	
+	\noindent\small
+	\textbf{Abréviations :} EEC~= Eastern English Channel ;
+	STST~= Selective Tidal Stream Transport ;
+	DVM~= Diel Vertical Migration.
+	
+	\begin{longtable}{%
+			>{\raggedright\arraybackslash}m{3.6cm}
+			>{\raggedright\arraybackslash}m{5.2cm}
+			>{\raggedright\arraybackslash}m{4.0cm}
+			>{\raggedright\arraybackslash}m{8.0cm}
+			>{\centering\arraybackslash}m{2.6cm}
+		}
+		
+		\toprule
+		\rowcolor{headerblue}
+		\textcolor{white}{\textbf{Espèce}} &
+		\textcolor{white}{\textbf{Profondeur des larves (m)}} &
+		\textcolor{white}{\textbf{Profondeur de ponte (m)}} &
+		\textcolor{white}{\textbf{Localisation des zones de ponte}} &
+		\textcolor{white}{\textbf{Réf.}} \\
+		\midrule
+		\endfirsthead
+		
+		\toprule
+		\rowcolor{headerblue}
+		\textcolor{white}{\textbf{Espèce}} &
+		\textcolor{white}{\textbf{Profondeur des larves (m)}} &
+		\textcolor{white}{\textbf{Profondeur de ponte (m)}} &
+		\textcolor{white}{\textbf{Localisation des zones de ponte}} &
+		\textcolor{white}{\textbf{Réf.}} \\
+		\midrule
+		\endhead
+		
+		\midrule
+		\endfoot
+		
+		\bottomrule
+		\endlastfoot
+		
+		\rowcolor{white}
+		\espece{Clupea harengus} &
+		0--40 (jour) ; homogène ou $>$60 (nuit) &
+		Benthique (non quantifiée) &
+		Manche, sud Mer du Nord, estuaires &
+		\textsuperscript{\cite{haslob_small_2009,hoffle_differences_2013,neven_winter_2024,ices_results_2007}} \\
+		
+		\rowcolor{rowgray}
+		\espece{Gadus morhua} &
+		0--40 (62\,\% en 0--20 de jour) &
+		Épipelagique (non quantifiée) &
+		Ensemble de la Mer du Nord &
+		\textsuperscript{\cite{hoffle_differences_2013,ices_results_2007}} \\
+		
+		\rowcolor{white}
+		\espece{Limanda limanda} &
+		$>$40 (plus profond que les gadidés) &
+		Pélagique (non quantifiée) &
+		Sud-Est de la Mer du Nord &
+		\textsuperscript{\cite{hoffle_differences_2013,ices_results_2007}} \\
+		
+		\rowcolor{rowgray}
+		\espece{Melanogrammus aeglefinus} &
+		0--40 (52\,\% en 0--20 de jour) &
+		Pélagique (non quantifiée) &
+		Nord Mer du Nord, côtes écossaises &
+		\textsuperscript{\cite{hoffle_differences_2013,ices_results_2007}} \\
+		
+		\rowcolor{white}
+		\espece{Merlangius merlangus} &
+		0--40 (remontée 0--20 la nuit) &
+		Pélagique (non quantifiée) &
+		Large Mer du Nord, côtes anglaises &
+		\textsuperscript{\cite{hoffle_differences_2013,ices_results_2007}} \\
+		
+		\rowcolor{rowgray}
+		\espece{Microstomus kitt} &
+		Pélagique (stades précoces) &
+		16--92 (adultes capturés) &
+		Manche Ouest, eaux écossaises &
+		\textsuperscript{\cite{jennings_distribution_1993,ices_results_2007}} \\
+		
+		\rowcolor{white}
+		\espece{Pleuronectes platessa} &
+		Toute la colonne d'eau ; STST : fond au jusant, surface au flot &
+		Épipelagique au large (non quantifiée) &
+		Sud Mer du Nord, EEC, German Bight &
+		\textsuperscript{\cite{de_graaf_numerical_2004,neven_winter_2024,ices_results_2007}} \\
+		
+		\rowcolor{rowgray}
+		\espece{Pollachius virens} &
+		$>$40 (jour) ; 0--40 (nuit) &
+		Pélagique (non quantifiée) &
+		Eaux profondes, nord Mer du Nord &
+		\textsuperscript{\cite{hoffle_differences_2013,ices_results_2007}} \\
+		
+		\rowcolor{white}
+		\espece{Scomber scombrus} &
+		0--60 ($<$10\,mm) ; DVM marquée ($>$10\,mm) &
+		0--30 (90\,\% des \oe{}ufs $<$13\,m) &
+		Talus continental, Mer du Nord, Mer Celtique, Golfe de Gascogne &
+		\textsuperscript{\cite{jansen_population_2013,jansen_temperature_2011,bartsch_individualbased_2004}} \\
+		
+		\rowcolor{rowgray}
+		\espece{Sprattus sprattus} &
+		Couches de surface &
+		Pélagique (non quantifiée) &
+		Sud Mer du Nord, German Bight &
+		\textsuperscript{\cite{ices_results_2007}} \\
+		
+		\rowcolor{white}
+		\espece{Trisopterus esmarkii} &
+		$>$40 (jour) ; 75--100 (nuit) &
+		Pélagique (non quantifiée) &
+		Nord Mer du Nord, îles Shetland &
+		\textsuperscript{\cite{hoffle_differences_2013,ices_results_2007}} \\
+		
+	\end{longtable}
+	
+	\vspace{0.8em}
+	\noindent\small
+	\printbibliography[title={Références}]
+	
+\end{document}

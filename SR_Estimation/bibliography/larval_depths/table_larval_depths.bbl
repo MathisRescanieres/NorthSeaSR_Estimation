@@ -1,0 +1,539 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.2 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{nty/global//global/global}
+    \entry{bartsch_individualbased_2004}{article}{}
+      \name{author}{2}{}{%
+        {{hash=5462246f4663eee0de740a7b8820003b}{%
+           family={Bartsch},
+           familyi={B\bibinitperiod},
+           given={J.},
+           giveni={J\bibinitperiod}}}%
+        {{hash=15ce9ab674ecb69fed67d7b19829f502}{%
+           family={Coombs},
+           familyi={C\bibinitperiod},
+           given={S.\bibnamedelimi H.},
+           giveni={S\bibinitperiod\bibinitdelim H\bibinitperiod}}}%
+      }
+      \strng{namehash}{aa15b3bfef7d351c24397191e9e9a835}
+      \strng{fullhash}{aa15b3bfef7d351c24397191e9e9a835}
+      \strng{bibnamehash}{aa15b3bfef7d351c24397191e9e9a835}
+      \strng{authorbibnamehash}{aa15b3bfef7d351c24397191e9e9a835}
+      \strng{authornamehash}{aa15b3bfef7d351c24397191e9e9a835}
+      \strng{authorfullhash}{aa15b3bfef7d351c24397191e9e9a835}
+      \field{sortinit}{B}
+      \field{sortinithash}{d7095fff47cda75ca2589920aae98399}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{abstract}{Abstract The main purpose of this paper is to provide the core description of the modelling exercise within the Shelf Edge Advection Mortality And Recruitment ({SEAMAR}) programme. An individual‐based model ({IBM}) was developed for the prediction of year‐to‐year survival of the early life‐history stages of mackerel ( Scomber scombrus ) in the eastern North Atlantic. The {IBM} is one of two components of the model system. The first component is a circulation model to provide physical input data for the {IBM}. The circulation model is a geographical variant of the {HAMburg} Shelf Ocean Model ({HAMSOM}). The second component is the {IBM}, which is an i‐space configuration model in which large numbers of individuals are followed as discrete entities to simulate the transport, growth and mortality of mackerel eggs, larvae and post‐larvae. Larval and post‐larval growth is modelled as a function of length, temperature and food distribution; mortality is modelled as a function of length and absolute growth rate. Each particle is considered as a super‐individual representing 10 6 eggs at the outset of the simulation, and then declining according to the mortality function. Simulations were carried out for the years 1998–2000. Results showed concentrations of particles at Porcupine Bank and the adjacent Irish shelf, along the Celtic Sea shelf‐edge, and in the southern Bay of Biscay. High survival was observed only at Porcupine and the adjacent shelf areas, and, more patchily, around the coastal margin of Biscay. The low survival along the shelf‐edge of the Celtic Sea was due to the consistently low estimates of food availability in that area.}
+      \field{issn}{1054-6006, 1365-2419}
+      \field{journaltitle}{Fisheries Oceanography}
+      \field{langid}{english}
+      \field{month}{11}
+      \field{number}{6}
+      \field{shortjournal}{Fisheries Oceanography}
+      \field{title}{An individual‐based model of the early life history of mackerel ( \textit{Scomber scombrus} ) in the eastern North Atlantic, simulating transport, growth and mortality}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{volume}{13}
+      \field{year}{2004}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \field{pages}{365\bibrangedash 379}
+      \range{pages}{15}
+      \verb{doi}
+      \verb 10.1111/j.1365-2419.2004.00305.x
+      \endverb
+      \verb{urlraw}
+      \verb https://onlinelibrary.wiley.com/doi/10.1111/j.1365-2419.2004.00305.x
+      \endverb
+      \verb{url}
+      \verb https://onlinelibrary.wiley.com/doi/10.1111/j.1365-2419.2004.00305.x
+      \endverb
+    \endentry
+    \entry{de_graaf_numerical_2004}{article}{}
+      \name{author}{4}{}{%
+        {{hash=8fc2a83425132407d121824f62b19c56}{%
+           family={De\bibnamedelima Graaf},
+           familyi={D\bibinitperiod\bibinitdelim G\bibinitperiod},
+           given={M.},
+           giveni={M\bibinitperiod}}}%
+        {{hash=650f6a28c2d280c0542bd2b663b1e98a}{%
+           family={Jager},
+           familyi={J\bibinitperiod},
+           given={Z.},
+           giveni={Z\bibinitperiod}}}%
+        {{hash=23bc068c08ae7ab8dc21b211ee5de4c5}{%
+           family={Vreugdenhil},
+           familyi={V\bibinitperiod},
+           given={C.B.},
+           giveni={C\bibinitperiod}}}%
+        {{hash=4bd75b76742b6bb51a78cf5a0c7b2b50}{%
+           family={Elorche},
+           familyi={E\bibinitperiod},
+           given={M.},
+           giveni={M\bibinitperiod}}}%
+      }
+      \strng{namehash}{7bef692254bfaf666fc82b302a36f237}
+      \strng{fullhash}{95ef351830172008a012433689e19c72}
+      \strng{bibnamehash}{7bef692254bfaf666fc82b302a36f237}
+      \strng{authorbibnamehash}{7bef692254bfaf666fc82b302a36f237}
+      \strng{authornamehash}{7bef692254bfaf666fc82b302a36f237}
+      \strng{authorfullhash}{95ef351830172008a012433689e19c72}
+      \field{sortinit}{D}
+      \field{sortinithash}{6f385f66841fb5e82009dc833c761848}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{issn}{02727714}
+      \field{journaltitle}{Estuarine, Coastal and Shelf Science}
+      \field{langid}{english}
+      \field{month}{2}
+      \field{number}{2}
+      \field{shortjournal}{Estuarine, Coastal and Shelf Science}
+      \field{title}{Numerical simulations of tidally cued vertical migrations of flatfish larvae in the North Sea}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{volume}{59}
+      \field{year}{2004}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \field{pages}{295\bibrangedash 305}
+      \range{pages}{11}
+      \verb{doi}
+      \verb 10.1016/j.ecss.2003.09.010
+      \endverb
+      \verb{urlraw}
+      \verb https://linkinghub.elsevier.com/retrieve/pii/S0272771403002968
+      \endverb
+      \verb{url}
+      \verb https://linkinghub.elsevier.com/retrieve/pii/S0272771403002968
+      \endverb
+    \endentry
+    \entry{haslob_small_2009}{article}{}
+      \name{author}{3}{}{%
+        {{hash=ed46df3aebfb136c4995e43a164292c4}{%
+           family={Haslob},
+           familyi={H\bibinitperiod},
+           given={Holger},
+           giveni={H\bibinitperiod}}}%
+        {{hash=d7925522fff1e8eac7761ceeb1ac2174}{%
+           family={Rohlf},
+           familyi={R\bibinitperiod},
+           given={Norbert},
+           giveni={N\bibinitperiod}}}%
+        {{hash=965c219792638998f04a3a3ad22a3870}{%
+           family={Schnack},
+           familyi={S\bibinitperiod},
+           given={Dietrich},
+           giveni={D\bibinitperiod}}}%
+      }
+      \strng{namehash}{9c6afc85175716c219a772222788c4e9}
+      \strng{fullhash}{9c6afc85175716c219a772222788c4e9}
+      \strng{bibnamehash}{9c6afc85175716c219a772222788c4e9}
+      \strng{authorbibnamehash}{9c6afc85175716c219a772222788c4e9}
+      \strng{authornamehash}{9c6afc85175716c219a772222788c4e9}
+      \strng{authorfullhash}{9c6afc85175716c219a772222788c4e9}
+      \field{sortinit}{H}
+      \field{sortinithash}{23a3aa7c24e56cfa16945d55545109b5}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{shorttitle}
+      \field{abstract}{The distribution of herring larvae in relation to environmental conditions and the occurrence of possible prey and predator organisms was studied during a 4-day period on a permanent station in the northern North Sea in September 1999. The vertical distribution of herring larvae was sampled in 20-m intervals by means of a multiple-closing net. To resolve the small-scale patchiness of herring larvae and planktonic prey and predator organisms, a towed in-situ video system was used, the Ichthyoplankton Recorder. A diel vertical migration of herring larvae was observed with different intensities depending on their body length. Small larvae ( {<} 10 mm) were concentrated in the upper water layers during daytime and were distributed more homogenously during night time. Large larvae ( {>} 16 mm) showed the highest abundances in the upper water layers during the day and were concentrated in deeper water layers during the night. The presented results appear to be relevant for individual-based modelling of the fate of larval herring populations.}
+      \field{day}{30}
+      \field{issn}{1886-8134, 0214-8358}
+      \field{issue}{S1}
+      \field{journaltitle}{Scientia Marina}
+      \field{month}{10}
+      \field{shortjournal}{Sci. mar.}
+      \field{shorttitle}{Small scale distribution patterns and vertical migration of North Sea herring larvae (Clupea harengus, Teleostei}
+      \field{title}{Small scale distribution patterns and vertical migration of North Sea herring larvae (Clupea harengus, Teleostei: Clupeidea) in relation to abiotic and biotic factors}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{volume}{73}
+      \field{year}{2009}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \field{pages}{13\bibrangedash 22}
+      \range{pages}{10}
+      \verb{doi}
+      \verb 10.3989/scimar.2009.73s1013
+      \endverb
+      \verb{urlraw}
+      \verb https://scientiamarina.revistas.csic.es/index.php/scientiamarina/article/view/1105
+      \endverb
+      \verb{url}
+      \verb https://scientiamarina.revistas.csic.es/index.php/scientiamarina/article/view/1105
+      \endverb
+    \endentry
+    \entry{hoffle_differences_2013}{article}{}
+      \name{author}{4}{}{%
+        {{hash=877a8e1e7e3f80b4ac4f3fff48c92649}{%
+           family={Höffle},
+           familyi={H\bibinitperiod},
+           given={Hannes},
+           giveni={H\bibinitperiod}}}%
+        {{hash=b5f4ba66e94f5d3d5587d00706f73e74}{%
+           family={Nash},
+           familyi={N\bibinitperiod},
+           given={Richard\bibnamedelimb D.\bibnamedelimi M.},
+           giveni={R\bibinitperiod\bibinitdelim D\bibinitperiod\bibinitdelim M\bibinitperiod}}}%
+        {{hash=8169eb04ed9a75141f56d336eea16dc4}{%
+           family={Falkenhaug},
+           familyi={F\bibinitperiod},
+           given={Tone},
+           giveni={T\bibinitperiod}}}%
+        {{hash=8027af688b4c7a0244a74cfc1b5dd47f}{%
+           family={Munk},
+           familyi={M\bibinitperiod},
+           given={Peter},
+           giveni={P\bibinitperiod}}}%
+      }
+      \strng{namehash}{7855c267c89273e98685f9463d881d2d}
+      \strng{fullhash}{9ac6e348fe3fbac076265ae0c4d29e5e}
+      \strng{bibnamehash}{7855c267c89273e98685f9463d881d2d}
+      \strng{authorbibnamehash}{7855c267c89273e98685f9463d881d2d}
+      \strng{authornamehash}{7855c267c89273e98685f9463d881d2d}
+      \strng{authorfullhash}{9ac6e348fe3fbac076265ae0c4d29e5e}
+      \field{sortinit}{H}
+      \field{sortinithash}{23a3aa7c24e56cfa16945d55545109b5}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{issn}{1745-1000, 1745-1019}
+      \field{journaltitle}{Marine Biology Research}
+      \field{langid}{english}
+      \field{month}{8}
+      \field{number}{7}
+      \field{shortjournal}{Marine Biology Research}
+      \field{title}{Differences in vertical and horizontal distribution of fish larvae and zooplankton, related to hydrography}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{volume}{9}
+      \field{year}{2013}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \field{pages}{629\bibrangedash 644}
+      \range{pages}{16}
+      \verb{doi}
+      \verb 10.1080/17451000.2013.765576
+      \endverb
+      \verb{urlraw}
+      \verb http://www.tandfonline.com/doi/abs/10.1080/17451000.2013.765576
+      \endverb
+      \verb{url}
+      \verb http://www.tandfonline.com/doi/abs/10.1080/17451000.2013.765576
+      \endverb
+    \endentry
+    \entry{ices_results_2007}{article}{}
+      \name{author}{1}{}{%
+        {{hash=ebaa38fc49ed5633129338fc8d9f3ce4}{%
+           family={{ICES}},
+           familyi={I\bibinitperiod}}}%
+      }
+      \strng{namehash}{ebaa38fc49ed5633129338fc8d9f3ce4}
+      \strng{fullhash}{ebaa38fc49ed5633129338fc8d9f3ce4}
+      \strng{bibnamehash}{ebaa38fc49ed5633129338fc8d9f3ce4}
+      \strng{authorbibnamehash}{ebaa38fc49ed5633129338fc8d9f3ce4}
+      \strng{authornamehash}{ebaa38fc49ed5633129338fc8d9f3ce4}
+      \strng{authorfullhash}{ebaa38fc49ed5633129338fc8d9f3ce4}
+      \field{sortinit}{I}
+      \field{sortinithash}{8d291c51ee89b6cd86bf5379f0b151d8}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Results of the spring 2004 North Sea ichthyoplankton surveys. The distribution of fish eggs and larvae from the international ichthyoplankton survey}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{year}{2007}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \verb{doi}
+      \verb 10.17895/ICES.PUB.5454
+      \endverb
+      \verb{urlraw}
+      \verb https://ices-library.figshare.com/articles/_/18624203
+      \endverb
+      \verb{url}
+      \verb https://ices-library.figshare.com/articles/_/18624203
+      \endverb
+    \endentry
+    \entry{jansen_population_2013}{article}{}
+      \name{author}{2}{}{%
+        {{hash=aa779a451e11aa6040674c637f9f2555}{%
+           family={Jansen},
+           familyi={J\bibinitperiod},
+           given={Teunis},
+           giveni={T\bibinitperiod}}}%
+        {{hash=d660a7f3e160c9d67a375ddbf5cf2512}{%
+           family={Gislason},
+           familyi={G\bibinitperiod},
+           given={Henrik},
+           giveni={H\bibinitperiod}}}%
+      }
+      \name{editor}{1}{}{%
+        {{hash=d664bc4e0cd13727c0c133d178b562f8}{%
+           family={Goldstien},
+           familyi={G\bibinitperiod},
+           given={Sharyn\bibnamedelima Jane},
+           giveni={S\bibinitperiod\bibinitdelim J\bibinitperiod}}}%
+      }
+      \strng{namehash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{fullhash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{bibnamehash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{authorbibnamehash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{authornamehash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{authorfullhash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{editorbibnamehash}{d664bc4e0cd13727c0c133d178b562f8}
+      \strng{editornamehash}{d664bc4e0cd13727c0c133d178b562f8}
+      \strng{editorfullhash}{d664bc4e0cd13727c0c133d178b562f8}
+      \field{extraname}{1}
+      \field{sortinit}{J}
+      \field{sortinithash}{b2f54a9081ace9966a7cb9413811edb4}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{day}{31}
+      \field{issn}{1932-6203}
+      \field{journaltitle}{{PLoS} {ONE}}
+      \field{langid}{english}
+      \field{month}{5}
+      \field{number}{5}
+      \field{shortjournal}{{PLoS} {ONE}}
+      \field{title}{Population Structure of Atlantic Mackerel (Scomber scombrus)}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{volume}{8}
+      \field{year}{2013}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \field{pages}{e64744}
+      \range{pages}{-1}
+      \verb{doi}
+      \verb 10.1371/journal.pone.0064744
+      \endverb
+      \verb{urlraw}
+      \verb https://dx.plos.org/10.1371/journal.pone.0064744
+      \endverb
+      \verb{url}
+      \verb https://dx.plos.org/10.1371/journal.pone.0064744
+      \endverb
+    \endentry
+    \entry{jansen_temperature_2011}{article}{}
+      \name{author}{2}{}{%
+        {{hash=aa779a451e11aa6040674c637f9f2555}{%
+           family={Jansen},
+           familyi={J\bibinitperiod},
+           given={Teunis},
+           giveni={T\bibinitperiod}}}%
+        {{hash=d660a7f3e160c9d67a375ddbf5cf2512}{%
+           family={Gislason},
+           familyi={G\bibinitperiod},
+           given={Henrik},
+           giveni={H\bibinitperiod}}}%
+      }
+      \strng{namehash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{fullhash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{bibnamehash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{authorbibnamehash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{authornamehash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \strng{authorfullhash}{0cf17dd3c957f942e929c5f73ce1959c}
+      \field{extraname}{2}
+      \field{sortinit}{J}
+      \field{sortinithash}{b2f54a9081ace9966a7cb9413811edb4}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{issn}{02784343}
+      \field{journaltitle}{Continental Shelf Research}
+      \field{langid}{english}
+      \field{month}{1}
+      \field{number}{1}
+      \field{shortjournal}{Continental Shelf Research}
+      \field{title}{Temperature affects the timing of spawning and migration of North Sea mackerel}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{volume}{31}
+      \field{year}{2011}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \field{pages}{64\bibrangedash 72}
+      \range{pages}{9}
+      \verb{doi}
+      \verb 10.1016/j.csr.2010.11.003
+      \endverb
+      \verb{urlraw}
+      \verb https://linkinghub.elsevier.com/retrieve/pii/S0278434310003444
+      \endverb
+      \verb{url}
+      \verb https://linkinghub.elsevier.com/retrieve/pii/S0278434310003444
+      \endverb
+    \endentry
+    \entry{jennings_distribution_1993}{article}{}
+      \name{author}{3}{}{%
+        {{hash=3859a6d75631f4faa69b2676cbb59d26}{%
+           family={Jennings},
+           familyi={J\bibinitperiod},
+           given={S.},
+           giveni={S\bibinitperiod}}}%
+        {{hash=0d2c4acc19f3311452057747b87d6c96}{%
+           family={Hewlett},
+           familyi={H\bibinitperiod},
+           given={G.\bibnamedelimi J.},
+           giveni={G\bibinitperiod\bibinitdelim J\bibinitperiod}}}%
+        {{hash=e4686b604dcc517cb9c56a1b90a9d870}{%
+           family={Flatman},
+           familyi={F\bibinitperiod},
+           given={S.},
+           giveni={S\bibinitperiod}}}%
+      }
+      \strng{namehash}{44f61d48154c37603ead86ff18f37f7f}
+      \strng{fullhash}{44f61d48154c37603ead86ff18f37f7f}
+      \strng{bibnamehash}{44f61d48154c37603ead86ff18f37f7f}
+      \strng{authorbibnamehash}{44f61d48154c37603ead86ff18f37f7f}
+      \strng{authornamehash}{44f61d48154c37603ead86ff18f37f7f}
+      \strng{authorfullhash}{44f61d48154c37603ead86ff18f37f7f}
+      \field{sortinit}{J}
+      \field{sortinithash}{b2f54a9081ace9966a7cb9413811edb4}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{abstract}{Landings of lemon sole, Microstomus kitt (Walbaum), per hour of otter trawling in the southern North Sea, English Channel, Western Approaches and Celtic Sea in 1990, suggest that areas where this species is relatively abundant in the western English Channel have not changed significantly since the 1950s. Adult lemon sole were tagged in the western English Channel during April and May 1970 and, by 1974, 47\% of the 1098 fish which were released had been recaptured. There was no indication of an extensive or regular migration of lemon sole, in contrast to plaice tagged at the same site on the same cruises or at a similar phase of their life history, which were frequently recaptured from sites in the eastern English Channel and North Sea. No juvenile lemon sole less than 18 cm total length ({TL}) were caught during fine-mesh beam trawl surveys conducted in the western English Channel from 1984 to 1991. A review of data from other young fish surveys indicates that lemon sole less than 15-{TL} were rarely caught, and suggests that they inhabit rocky areas from 50–100 m deep where they are not accessible to contemporary sampling methods. It is concluded that the stock of adult lemon sole distributed in the extreme western English Channel has sufficient temporal and spatial integrity to be considered as a single management unit.}
+      \field{day}{1}
+      \field{issn}{0165-7836}
+      \field{journaltitle}{Fisheries Research}
+      \field{month}{12}
+      \field{number}{3}
+      \field{shortjournal}{Fisheries Research}
+      \field{title}{The distribution, migrations and stock integrity of lemon sole \textit{Microstomus kitt} in the western English Channel}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{volume}{18}
+      \field{year}{1993}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \field{pages}{377\bibrangedash 388}
+      \range{pages}{12}
+      \verb{doi}
+      \verb 10.1016/0165-7836(93)90164-3
+      \endverb
+      \verb{urlraw}
+      \verb https://www.sciencedirect.com/science/article/pii/0165783693901643
+      \endverb
+      \verb{url}
+      \verb https://www.sciencedirect.com/science/article/pii/0165783693901643
+      \endverb
+    \endentry
+    \entry{neven_winter_2024}{article}{}
+      \name{author}{8}{}{%
+        {{hash=88d814f90175262dac98fe6178f93620}{%
+           family={Neven},
+           familyi={N\bibinitperiod},
+           given={Carolin\bibnamedelima Julie},
+           giveni={C\bibinitperiod\bibinitdelim J\bibinitperiod}}}%
+        {{hash=d448ab40c072f30ec5d4c30f20d97cf1}{%
+           family={Giraldo},
+           familyi={G\bibinitperiod},
+           given={Carolina},
+           giveni={C\bibinitperiod}}}%
+        {{hash=70e80d2327e7eeb83f739a02a9797615}{%
+           family={Girardin},
+           familyi={G\bibinitperiod},
+           given={Raphaël},
+           giveni={R\bibinitperiod}}}%
+        {{hash=a55964eee1a8c71277a1bbebe77311e9}{%
+           family={Lefebvre},
+           familyi={L\bibinitperiod},
+           given={Alain},
+           giveni={A\bibinitperiod}}}%
+        {{hash=bb6c35431737bf9ab2be594a4a52ce65}{%
+           family={Lefebvre},
+           familyi={L\bibinitperiod},
+           given={Sébastien},
+           giveni={S\bibinitperiod}}}%
+        {{hash=4be6a49a2d7f04fe050e51929f197489}{%
+           family={Loots},
+           familyi={L\bibinitperiod},
+           given={Christophe},
+           giveni={C\bibinitperiod}}}%
+        {{hash=2ddcfd31d4730da9642eef72031514f5}{%
+           family={Meunier},
+           familyi={M\bibinitperiod},
+           given={Cédric\bibnamedelima Leo},
+           giveni={C\bibinitperiod\bibinitdelim L\bibinitperiod}}}%
+        {{hash=2a364c94db5a7d8f4335d68d33c2a13c}{%
+           family={Marchal},
+           familyi={M\bibinitperiod},
+           given={Paul},
+           giveni={P\bibinitperiod}}}%
+      }
+      \name{editor}{1}{}{%
+        {{hash=a8bcdc5c10e28785d35bc97644aa0808}{%
+           family={Kumar},
+           familyi={K\bibinitperiod},
+           given={Ram},
+           giveni={R\bibinitperiod}}}%
+      }
+      \strng{namehash}{2dadf70153dd4d7390c2dad58300a321}
+      \strng{fullhash}{00f0df7ce670f53efb8a4bffb84953ff}
+      \strng{bibnamehash}{2dadf70153dd4d7390c2dad58300a321}
+      \strng{authorbibnamehash}{2dadf70153dd4d7390c2dad58300a321}
+      \strng{authornamehash}{2dadf70153dd4d7390c2dad58300a321}
+      \strng{authorfullhash}{00f0df7ce670f53efb8a4bffb84953ff}
+      \strng{editorbibnamehash}{a8bcdc5c10e28785d35bc97644aa0808}
+      \strng{editornamehash}{a8bcdc5c10e28785d35bc97644aa0808}
+      \strng{editorfullhash}{a8bcdc5c10e28785d35bc97644aa0808}
+      \field{sortinit}{N}
+      \field{sortinithash}{22369a73d5f88983a108b63f07f37084}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{abstract}{Although zooplankton were extensively studied in the North Sea, knowledge about winter zooplankton assemblages is still scarce, despite potential influence of zooplankton overwintering stocks on seasonal plankton succession and productivity. Furthermore, several economically and ecologically important fish species reproduce during winter contributing to the zooplankton community as passive members (eggs) or predators (larvae). To elucidate on winter zooplankton distribution, abundance and composition in the Southern North Sea and Eastern English Channel, we defined assemblages based on mesozoo- and ichthyoplankton data sampled between January and February 2008 using fuzzy-clustering and indicator species. Mesozoo- and ichthyoplankton (eggs+larvae) were integrated in a common analysis by using a spatial grid adapted to the datasets and defined by means of a geostatistical method developed in agronomics. Potential environmental drivers of assemblage distribution were evaluated by means of {GLMM} and comparison with data from 2022 facilitated insight about the inter-annual representativeness of the assemblages. Five zooplankton assemblages were found varying with regard to total zooplankton abundance, dominant and indicator taxa. Spatial variability of abiotic (dissolved nutrients, salinity, depth, temperature, organic matter in suspension, chlorophyll a), biotic variables (phyto- and microplankton composition), water masses and fish spawning grounds were revealed as potential drivers of assemblage distribution. Assemblages off the Rhine-Scheldt estuary and in the German Bight harbored the biggest zooplankton overwintering stocks that might influence the grazing pressure on phytoplankton spring production. Assemblages off the Rhine-Scheldt estuary and covering the English Channel and the Southern Bight were found to be of high importance for herring and plaice larvae. Although further analyses suggested inter-annual representativeness of the assemblages found (2008 vs 2022), the assessment of further years would be necessary to account for potential inter-annual variability. Future studies could profit from the assessment of microzooplankton facilitating insight in fish larvae feeding potential and zooplankton overwintering strategies.}
+      \field{day}{7}
+      \field{issn}{1932-6203}
+      \field{journaltitle}{{PLOS} {ONE}}
+      \field{langid}{english}
+      \field{month}{10}
+      \field{number}{10}
+      \field{shortjournal}{{PLoS} {ONE}}
+      \field{title}{Winter distribution of zooplankton and ichthyoplankton assemblages in the North Sea and the English Channel}
+      \field{urlday}{17}
+      \field{urlmonth}{4}
+      \field{urlyear}{2026}
+      \field{volume}{19}
+      \field{year}{2024}
+      \field{dateera}{ce}
+      \field{urldateera}{ce}
+      \field{pages}{e0308803}
+      \range{pages}{-1}
+      \verb{doi}
+      \verb 10.1371/journal.pone.0308803
+      \endverb
+      \verb{urlraw}
+      \verb https://dx.plos.org/10.1371/journal.pone.0308803
+      \endverb
+      \verb{url}
+      \verb https://dx.plos.org/10.1371/journal.pone.0308803
+      \endverb
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+
