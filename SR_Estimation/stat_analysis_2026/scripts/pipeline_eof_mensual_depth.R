@@ -160,34 +160,34 @@ ensure_dir(dir_var)
 
       val_col <- "temp"
 
-      # # ======================================================
-      # # PLOTS PAR PC
-      # # ======================================================
+      # ======================================================
+      # PLOTS PAR PC
+      # ======================================================
 
-      # for (pc_name in unique(eof_obj$left$PC)) {
+      for (pc_name in unique(eof_obj$left$PC)) {
 
-      #   df_map <- eof_obj$left %>% filter(PC == pc_name)
+        df_map <- eof_obj$left %>% filter(PC == pc_name)
 
-      #   p_map <- ggplot(df_map, aes(lon, lat, fill = .data[[val_col]])) +
-      #     geom_raster() +
-      #     scale_fill_viridis_c(option = "plasma") +
-      #     coord_fixed() +
-      #     labs(title = paste0("EOF ", pc_name, " | ", key)) +
-      #     theme_minimal()
+        p_map <- ggplot(df_map, aes(lon, lat, fill = .data[[val_col]])) +
+          geom_raster() +
+          scale_fill_viridis_c(option = "plasma") +
+          coord_fixed() +
+          labs(title = paste0("EOF ", pc_name, " | ", key)) +
+          theme_minimal()
 
-      #   ggsave(file.path(dir_map_d, paste0(key, "_", pc_name, ".pdf")),
-      #          p_map, width = 7, height = 5)
+        ggsave(file.path(dir_map_d, paste0(key, "_", pc_name, ".pdf")),
+               p_map, width = 7, height = 5)
 
-      #   df_ts <- eof_obj$right %>% filter(PC == pc_name)
+        df_ts <- eof_obj$right %>% filter(PC == pc_name)
 
-      #   p_ts <- ggplot(df_ts, aes(time, .data[[val_col]])) +
-      #     geom_line(color = "steelblue") +
-      #     labs(title = paste0("EOF TS ", pc_name, " | ", key)) +
-      #     theme_minimal()
+        p_ts <- ggplot(df_ts, aes(time, .data[[val_col]])) +
+          geom_line(color = "steelblue") +
+          labs(title = paste0("EOF TS ", pc_name, " | ", key)) +
+          theme_minimal()
 
-      #   ggsave(file.path(dir_ts_d, paste0(key, "_", pc_name, "_ts.pdf")),
-      #          p_ts, width = 7, height = 4)
-      # }
+        ggsave(file.path(dir_ts_d, paste0(key, "_", pc_name, "_ts.pdf")),
+               p_ts, width = 7, height = 4)
+      }
 
       # =================
       # VARIANCE CUMULÉE
