@@ -16,6 +16,9 @@ ensure_dir <- function(dir) {
 dir_eof <- "../results_eof_depth/EOF"
 ensure_dir(dir_eof)
 
+dir_table <- file.path(dir_eof, "table_explained_var")
+ensure_dir(dir_table)
+
 # ================================================================
 # STRUCTURE SORTIE EOF
 # ================================================================
@@ -111,6 +114,8 @@ ensure_dir(dir_var)
 
     if (n_times_m < 2) next
 
+    r2_month <- list()
+
     for (d in depth_levels) {
 
       key <- sprintf("month_%02d_depth_%g", m, d)
@@ -136,12 +141,14 @@ ensure_dir(dir_var)
       eof_obj <- tryCatch(
         metR::EOF(temp ~ lon + lat | time,
                   data = df_md,
-                  n = n_pc_start:n_pc_safe),
+                  n = n_pc_start:n_pc_safe,
+                  rotate = stats::varimax),
         error = function(e) NULL,
         warning = function(w) {
           metR::EOF(temp ~ lon + lat | time,
                     data = df_md,
-                    n = n_pc_start:n_pc_safe)
+                    n = n_pc_start:n_pc_safe,
+                    rotate = stats::varimax)
         }
       )
 
@@ -189,26 +196,48 @@ ensure_dir(dir_var)
       #          p_ts, width = 7, height = 4)
       # }
 
-      # # =================
-      # # VARIANCE CUMULÉE
-      # # =================
+      # =================
+      # VARIANCE CUMULÉE
+      # =================
 
-      # var_file <- file.path(dir_var_d, paste0(key, "_cumvar.pdf"))
+      var_df <- eof_obj$sdev %>%
+        as_tibble() %>%
+        mutate(PC = as.integer(PC)) %>%
+        arrange(PC) %>%
+        mutate(cum_var = cumsum(r2))
 
-      # .plot_cum_var(
-      #   eof_obj,
-      #   title = paste0("Cumulative variance | ", key),
-      #   file_out = var_file
-      # )
+      # Plot PDF existant
+      .plot_cum_var(eof_obj,
+                    title    = paste0("Cumulative variance | ", key),
+                    file_out = file.path(dir_var_d, paste0(key, "_cumvar.pdf")))
+
+      # Ligne pour le CSV : depth + une colonne par PC disponible
+      row_var <- var_df %>%
+        select(PC, r2) %>%
+        pivot_wider(names_from = PC, values_from = r2, names_prefix = "PC_") %>%
+        mutate(depth = d, .before = everything())
+
+      r2_month[[as.character(d)]] <- row_var
 
       eof_list[[key]] <- eof_obj
-
       cat("    ✓ OK\n")
     }
+
+    # ── écriture CSV du mois ──
+    if (length(r2_month) > 0) {
+
+      csv_month <- bind_rows(r2_month)   # bind_rows gère les PC manquants -> NA
+
+      csv_file <- file.path(dir_table, sprintf("r2_month_%02d.csv", m))
+      write.csv(csv_month, csv_file, row.names = FALSE)
+
+      cat("    → CSV écrit :", csv_file, "\n")
+    }
+
   }
 
-  cat("\n→", length(eof_list), "EOF calculés\n")
-  eof_list
+    cat("\n→", length(eof_list), "EOF calculés\n")
+    eof_list
 }
 
 # ================================================================
