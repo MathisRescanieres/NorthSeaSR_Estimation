@@ -13,7 +13,7 @@ ensure_dir <- function(dir) {
   if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
 }
 
-dir_eof <- "../results_eof_depth/EOF"
+dir_eof <- "../results_eof_depth/REOF_with_trend"
 ensure_dir(dir_eof)
 
 dir_table <- file.path(dir_eof, "table_explained_var")
@@ -61,7 +61,7 @@ ensure_dir(dir_var)
 # VARIANCE CUMULÉE
 # ================================================================
 
-.plot_cum_var <- function(eof_obj, title, file_out) {
+.plot_cum_var <- function(eof_obj, title, file_out, threshold_var_plot) {
 
   var_df <- eof_obj$sdev %>%
     as_tibble() %>%
@@ -69,14 +69,14 @@ ensure_dir(dir_var)
     arrange(PC) %>%
     mutate(cum_var = cumsum(r2))
 
-  pc_99 <- which(var_df$cum_var >= 0.99)[1]
+  pc_thresh <- which(var_df$cum_var >= threshold_var_plot)[1]
 
   p <- ggplot(var_df, aes(x = PC, y = cum_var)) +
     geom_col(fill = "steelblue", alpha = 0.7) +
     geom_line(color = "black") +
     geom_point(color = "black") +
-    geom_hline(yintercept = 0.99, linetype = "dashed", color = "red") +
-    geom_vline(xintercept = pc_99, linetype = "dotted", color = "red") +
+    geom_hline(yintercept = threshold_var_plot, linetype = "dashed", color = "red") +
+    geom_vline(xintercept = pc_thresh, linetype = "dotted", color = "red") +
     scale_x_continuous(breaks = var_df$PC) +
     labs(
       title = title,
@@ -95,7 +95,9 @@ ensure_dir(dir_var)
 # ================================================================
 
 .build_monthly_depth_eof_list <- function(df, n_pc_start, n_pc_end,
-                                           out_dir = NULL) {
+                                          threshold_var_plot = 0.99,
+                                          rotate_fct = NULL,
+                                          out_dir = NULL) {
 
   if (!is.null(out_dir)) ensure_dir(out_dir)
 
@@ -139,16 +141,18 @@ ensure_dir(dir_var)
       if (n_pc_safe < n_pc_start) next
 
       eof_obj <- tryCatch(
-        metR::EOF(temp ~ lon + lat | time,
-                  data = df_md,
-                  n = n_pc_start:n_pc_safe,
-                  rotate = stats::varimax),
-        error = function(e) NULL,
+        if (!is.null(rotate_fct)) {
+          metR::EOF(temp ~ lon + lat | time, data = df_md, n = n_pc_start:n_pc_safe, rotate = rotate_fct)
+        } else {
+          metR::EOF(temp ~ lon + lat | time, data = df_md, n = n_pc_start:n_pc_safe)
+        },
+        error   = function(e) NULL,
         warning = function(w) {
-          metR::EOF(temp ~ lon + lat | time,
-                    data = df_md,
-                    n = n_pc_start:n_pc_safe,
-                    rotate = stats::varimax)
+          if (!is.null(rotate_fct)) {
+            metR::EOF(temp ~ lon + lat | time, data = df_md, n = n_pc_start:n_pc_safe, rotate = rotate_fct)
+          } else {
+            metR::EOF(temp ~ lon + lat | time, data = df_md, n = n_pc_start:n_pc_safe)
+          }
         }
       )
 
@@ -167,34 +171,34 @@ ensure_dir(dir_var)
 
       val_col <- "temp"
 
-      # # ======================================================
-      # # PLOTS PAR PC
-      # # ======================================================
+      # ======================================================
+      # PLOTS PAR PC
+      # ======================================================
 
-      # for (pc_name in unique(eof_obj$left$PC)) {
+      for (pc_name in unique(eof_obj$left$PC)) {
 
-      #   df_map <- eof_obj$left %>% filter(PC == pc_name)
+        df_map <- eof_obj$left %>% filter(PC == pc_name)
 
-      #   p_map <- ggplot(df_map, aes(lon, lat, fill = .data[[val_col]])) +
-      #     geom_tile() +
-      #     scale_fill_viridis_c(option = "plasma") +
-      #     coord_fixed() +
-      #     labs(title = paste0("EOF ", pc_name, " | ", key)) +
-      #     theme_minimal()
+        p_map <- ggplot(df_map, aes(lon, lat, fill = .data[[val_col]])) +
+          geom_tile() +
+          scale_fill_viridis_c(option = "plasma") +
+          coord_fixed() +
+          labs(title = paste0("EOF ", pc_name, " | ", key)) +
+          theme_minimal()
 
-      #   ggsave(file.path(dir_map_d, paste0(key, "_", pc_name, ".pdf")),
-      #          p_map, width = 7, height = 5)
+        ggsave(file.path(dir_map_d, paste0(key, "_", pc_name, ".pdf")),
+               p_map, width = 7, height = 5)
 
-      #   df_ts <- eof_obj$right %>% filter(PC == pc_name)
+        df_ts <- eof_obj$right %>% filter(PC == pc_name)
 
-      #   p_ts <- ggplot(df_ts, aes(time, .data[[val_col]])) +
-      #     geom_line(color = "steelblue") +
-      #     labs(title = paste0("EOF TS ", pc_name, " | ", key)) +
-      #     theme_minimal()
+        p_ts <- ggplot(df_ts, aes(time, .data[[val_col]])) +
+          geom_line(color = "steelblue") +
+          labs(title = paste0("EOF TS ", pc_name, " | ", key)) +
+          theme_minimal()
 
-      #   ggsave(file.path(dir_ts_d, paste0(key, "_", pc_name, "_ts.pdf")),
-      #          p_ts, width = 7, height = 4)
-      # }
+        ggsave(file.path(dir_ts_d, paste0(key, "_", pc_name, "_ts.pdf")),
+               p_ts, width = 7, height = 4)
+      }
 
       # =================
       # VARIANCE CUMULÉE
@@ -209,7 +213,8 @@ ensure_dir(dir_var)
       # Plot PDF existant
       .plot_cum_var(eof_obj,
                     title    = paste0("Cumulative variance | ", key),
-                    file_out = file.path(dir_var_d, paste0(key, "_cumvar.pdf")))
+                    file_out = file.path(dir_var_d, paste0(key, "_cumvar.pdf")),
+                    threshold_var_plot = threshold_var_plot)
 
       # Ligne pour le CSV : depth + une colonne par PC disponible
       row_var <- var_df %>%
@@ -311,15 +316,18 @@ ensure_dir(dir_var)
 
 run_eof_pipeline <- function(df,
                               n_pc_start = 1,
-                              n_pc_end = 63) {
+                              n_pc_end = 63,
+                              threshold_var_plot = 0.99,
+                              rotate_fct = NULL) {
 
   stopifnot(all(c("lon","lat","depth","time","temp") %in% names(df)))
 
   cat(">>> EOF computation\n")
 
   eof_list <- .build_monthly_depth_eof_list(
-    df, n_pc_start, n_pc_end, out_dir = dir_eof
-  )
+    df, n_pc_start, n_pc_end, out_dir = dir_eof,
+    threshold_var_plot = threshold_var_plot,
+    rotate_fct = rotate_fct)
 
   cat(">>> cohort extraction\n")
 
