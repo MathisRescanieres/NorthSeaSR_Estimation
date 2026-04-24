@@ -14,7 +14,7 @@ SEED          <- 42
 TEST_RATIO    <- 0.2
 NFOLDS        <- 1
 TARGET        <- "Numeric_sex"
-OUT_DIR       <- "../results_mensual_PC1_to_PC65_xgb_low_memory"
+OUT_DIR       <- "../results_ml_models/results_mensual_PC1_to_PC65_xgb_low_memory"
 
 XGB_PARAMS <- list(
   objective        = "binary:logistic",
@@ -103,14 +103,15 @@ var_keep <- c("T")
 # ================================================================
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
-files       <- list.files("../data/species_prejoined", full.names = TRUE)
+files       <- list.files("../data/REOF_species_joined_data_trended_15_prct", full.names = TRUE)
 results_all <- data.frame()
 
 cat("Nb fichiers détectés :", length(files), "\n")
 
 for (f in files) {
 
-  sp <- tools::file_path_sans_ext(basename(f))
+  # sp <- tools::file_path_sans_ext(basename(f))
+  sp <- "Limanda limanda"
 
   cat("\n═══════════════════════════════\n")
   cat("ESPECE :", sp, "\n")
