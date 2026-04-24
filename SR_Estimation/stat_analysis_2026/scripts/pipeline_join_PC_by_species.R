@@ -9,14 +9,21 @@ run_species_prejoin <- function(sp,
                                 dir_r2,
                                 dir_out,
                                 detrending,        # obligatoire : "none", "global_mean", "linear_mean"
-                                trend_params = NULL) {
+                                trend_params = NULL,
+                                temp_bar = NULL) {
 
+  # Warnings 
   stopifnot(detrending %in% c("none", "global_mean", "linear_mean"))
   if (detrending != "none" && is.null(trend_params))
     stop("trend_params est requis quand detrending != 'none'")
   
+  if (detrending == "linear_mean" && is.null(temp_bar))
+    stop("temp_bar est requis quand detrending == 'linear_mean'")
+  
   # Lecture si chemin fourni
   if (is.character(trend_params)) trend_params <- read.csv(trend_params)
+  
+  if (is.character(temp_bar))     temp_bar     <- read.csv(temp_bar)
 
   cat("Processing:", sp, "\n")
 
@@ -116,7 +123,7 @@ run_species_prejoin <- function(sp,
 
   } else if (detrending == "linear_mean") {
 
-    tp <- trend_params  # copie locale explicite dans le scope courant
+    tp <- trend_params  # copie locale
 
     cohortes <- unique(data_sp_joined$Cohorte_num)
 
@@ -143,6 +150,27 @@ run_species_prejoin <- function(sp,
 
     data_sp_joined <- data_sp_joined %>%
       left_join(trend_cov, by = "Cohorte_num")
+
+    tb <- temp_bar  # copie locale
+
+    obs_cov <- map_dfr(cohortes, function(y) {
+      row <- list(Cohorte_num = y)
+      for (j in seq_len(nrow(.month_window))) {
+        lbl       <- .month_window$month_label[j]
+        m_num     <- .month_window$month_num[j]
+        yr_target <- y + .month_window$year_shift[j]
+        for (d in depths) {
+          val <- tb %>%
+            filter(month == m_num, depth == d, year == yr_target) %>%
+            pull(temp_bar)
+          row[[paste0("obs_", lbl, "_d", d)]] <- if (length(val) == 1) val else NA_real_
+        }
+      }
+      as_tibble(row)
+    })
+
+    data_sp_joined <- data_sp_joined %>%
+      left_join(obs_cov, by = "Cohorte_num")
   }
 
   # ============================================================
@@ -156,7 +184,8 @@ run_species_prejoin <- function(sp,
   det_cols <- switch(detrending,
     "none"        = character(0),
     "global_mean" = grep("^clim_",  names(data_sp_joined), value = TRUE),
-    "linear_mean" = grep("^trend_", names(data_sp_joined), value = TRUE)
+    "linear_mean" = c(grep("^trend_", names(data_sp_joined), value = TRUE),
+                      grep("^obs_",   names(data_sp_joined), value = TRUE))
   )
 
   data_sp_joined <- data_sp_joined %>%
