@@ -1,7 +1,7 @@
 library(tidyverse)
 
 # Pathway to the data set (TO BE MODIFIED IF NECESSERY)
-raw_data_path <- file.path("SMALK_2022-01-06 11_47_25.csv")
+raw_data_path <- file.path("trawling_data/SMALK_2022-01-06 11_47_25.csv")
 
 # Importation of the data set
 raw_data <- read.csv(raw_data_path,
