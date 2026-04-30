@@ -4,78 +4,61 @@ library(tidyverse)
 raw_data_path <- file.path("trawling_data/SMALK_2022-01-06 11_47_25.csv")
 
 # Importation of the data set
-raw_data <- read.csv(raw_data_path,
+raw_data <- read.csv("../data/trawling_data/DATRAS-NS-IBTS.csv",
                  header = TRUE,
-                 sep = ";",
-                 na.strings = c("NA", "-9", ""),
+                 sep = ",",
                  stringsAsFactors = FALSE)
 
-# Pretraitement of the data set
-data <- raw_data %>%
-  select(-PlusGr, -Survey, -IndWgt, -DateofCalculation) %>%
-  mutate(
-    Sex = as.factor(Sex),
-    Maturity = as.factor(Maturity),
-    Species = as.factor(Species),
-    Area = as.factor(Area)
-  ) %>%
-  filter(
-    !is.na(Age),
-    !is.na(Sex),
-    !is.na(CANoAtLngt)
-  ) %>%
-  mutate(
-    Numeric_sex = ifelse(Sex == "M", 1L, 0L),
-    Age = as.double(Age),
-    Year = as.double(Year),
-    Cohorte = Year - Age,
-    Species = droplevels(Species),
-    Maturity = droplevels(Maturity),
-    Sex = droplevels(Sex)) %>%
-  mutate(Sex = na_if(as.character(Sex), "U"),
-         Sex = as.factor(Sex),
-         Sex = droplevels(Sex)) %>%
-  filter(!is.na(Sex))
+factor_cols <- c(
+  "database",
+  "original_binomial_name",   # espèce = variable clé
+  "original_age_unit",        # unité d'âge (probablement "year" partout)
+  "original_body_size_type",  # type de mesure (TL, SL...)
+  "original_body_size_unit",  # unité (mm, cm...)
+  "original_body_mass_type",
+  "original_body_mass_unit",
+  "maturity_stage_scale",     # échelle de maturité
+  "maturity_stage",           # stade de maturité
+  "sexing_method_phenotypic", # méthode de sexage
+  "capture_method",           # méthode de capture
+  "biological_scale",         # échelle biologique
+  "location"                  # zone géographique
+)
 
-data <- data %>%
-  mutate(
-    Numeric_maturity = case_when(
-      # Simple digit system
-      Maturity == "1"  ~ 0L,  # Immature
-      Maturity == "2"  ~ 1L,  # Mature
-      Maturity == "3"  ~ 1L,
-      Maturity == "4"  ~ 1L,
-      Maturity == "5"  ~ 1L,
-      Maturity == "6"  ~ 1L,
-      # ICES system
-      Maturity == "61" ~ 0L,  # Immature
-      Maturity == "62" ~ 1L,  # Mature
-      Maturity == "63" ~ 1L,
-      Maturity == "64" ~ 1L,
-      Maturity == "65" ~ 1L,
-      Maturity == "66" ~ 1L,
-      # Alphanumeric system
-      Maturity == "A"  ~ 0L,  # Immature
-      Maturity == "B"  ~ 1L,  # Mature
-      Maturity == "Ba" ~ 1L,
-      Maturity == "Bb" ~ 1L,
-      Maturity == "C"  ~ 1L,
-      Maturity == "Ca" ~ 1L,
-      Maturity == "Cb" ~ 1L,
-      Maturity == "D"  ~ 1L,
-      Maturity == "Da" ~ 1L,
-      Maturity == "E"  ~ 1L,
-      Maturity == "F"  ~ 1L,
-      Maturity == "I"  ~ 0L,  # Immature
-      Maturity == "M"  ~ 1L,  # Mature
-    )
-  )
+raw_data[factor_cols] <- lapply(raw_data[factor_cols], factor)
 
-cat("\nDimensions before filtering NAs :", nrow(raw_data), "x", ncol(raw_data), "\n")
-cat("Dimensions after filtering NAs  :", nrow(data), "x", ncol(data), "\n")
-cat("Discarded individuals           :", nrow(raw_data) - nrow(data), "\n")
-cat("\nNAs left :\n")
-print(sapply(data, function(x) sum(is.na(x))))
+data <- raw_data[!is.na(raw_data$number_female) & !is.na(raw_data$number_male), ]
+
+# # Pretraitement of the data set
+# data <- raw_data %>%
+#   select(-PlusGr, -Survey, -IndWgt, -DateofCalculation) %>%
+#   mutate(
+#     Sex = as.factor(Sex),
+#     Maturity = as.factor(Maturity),
+#     Species = as.factor(Species),
+#     Area = as.factor(Area)
+#   ) %>%
+#   filter(
+#     !is.na(Age),
+#     !is.na(Sex),
+#     !is.na(CANoAtLngt)
+#   ) %>%
+#   mutate(
+#     Numeric_sex = ifelse(Sex == "M", 1L, 0L),
+#     Age = as.double(Age),
+#     Year = as.double(Year),
+#     Cohorte = Year - Age,
+#     Species = droplevels(Species),
+#     Maturity = droplevels(Maturity),
+#     Sex = droplevels(Sex)) %>%
+#   mutate(Sex = na_if(as.character(Sex), "U"),
+#          Sex = as.factor(Sex),
+#          Sex = droplevels(Sex)) %>%
+#   filter(!is.na(Sex))
+
+cat("\nDimensions before filtering NAs on sex data   :", nrow(raw_data), "x", ncol(raw_data), "\n")
+cat("Dimensions after filtering NAs on sex data    :", nrow(data), "x", ncol(data), "\n")
+cat("Discarded individuals                         :", nrow(raw_data) - nrow(data), "\n")
 
 # Freeing memory
 rm(raw_data, raw_data_path)
