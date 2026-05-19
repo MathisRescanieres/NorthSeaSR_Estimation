@@ -1,4 +1,8 @@
-library(tidyverse)
+library(conflicted)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(purrr)
 
 # Pathway to the data set (TO BE MODIFIED IF NECESSERY)
 raw_data_path <- file.path("trawling_data/SMALK_2022-01-06 11_47_25.csv")
@@ -10,7 +14,7 @@ raw_data <- read.csv("../data/trawling_data/DATRAS-NS-IBTS.csv",
                  stringsAsFactors = FALSE)
 
 factor_cols <- c(
-  "database",
+  "reference_id",
   "original_binomial_name",   # espèce = variable clé
   "original_age_unit",        # unité d'âge (probablement "year" partout)
   "original_body_size_type",  # type de mesure (TL, SL...)

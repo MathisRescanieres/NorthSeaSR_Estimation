@@ -9,5 +9,6 @@
 *.rds
 *.pdf
 *.txt
+*.zip
 temp_gif/
 temp_var_gif/
