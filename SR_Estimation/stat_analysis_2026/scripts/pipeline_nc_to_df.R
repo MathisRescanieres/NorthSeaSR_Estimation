@@ -11,8 +11,11 @@
 # ==============================================================================
 
 library(ncdf4)
-library(tidyverse)
+library(dplyr)
+library(tidyr)
 library(lubridate)
+library(purrr)
+library(conflicted)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FONCTION PRINCIPALE
@@ -70,8 +73,8 @@ run_nc_pipeline <- function(file_nc, max_depth = 750) {
       year  = year(time),
       month = month(time)
     ) %>%
-    filter(!is.na(temp)) %>%
-    select(lon, lat, depth, time, year, month, temp)
+    dplyr::filter(!is.na(temp)) %>%
+    dplyr::select(lon, lat, depth, time, year, month, temp)
 
   cat("\n✔ Pipeline terminé —", nrow(df), "observations,", ncol(df), "colonnes\n")
   cat("  Colonnes :", paste(names(df), collapse = " | "), "\n")
