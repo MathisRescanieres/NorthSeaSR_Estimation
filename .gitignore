@@ -10,8 +10,15 @@
 *.pdf
 *.txt
 *.zip
+*.tiff
+*.dbf
+*.prj
+*.shp
+*.shx
+*.cpg
+*.sbn
+*.sbx
 temp_gif/
 temp_var_gif/
 rapport/
 bibliography/
-*.tiff

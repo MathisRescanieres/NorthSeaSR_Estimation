@@ -14,7 +14,7 @@ ensure_dir <- function(dir) {
   if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
 }
 
-dir_eof <- "../results_eof_depth/REOF_with_trend"
+dir_eof <- "../results_eof_depth/EOF_with_trend"
 ensure_dir(dir_eof)
 
 dir_table <- file.path(dir_eof, "table_explained_var")
@@ -281,8 +281,8 @@ ensure_dir(dir_var)
 
 run_eof_pipeline <- function(df,
                               n_pc_start         = 1,
-                              n_pc_end           = 63,
-                              threshold_r2       = 0.15,
+                              n_pc_end           = 10,
+                              threshold_r2       = NULL,
                               threshold_var_plot = 0.99,
                               rotate_fct         = NULL) {
 

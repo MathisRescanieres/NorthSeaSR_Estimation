@@ -1,6 +1,6 @@
 # =============================================================================
 #  Importance des variables XGBoost — baseline vs EOF
-#  25 premiers termes par Gain, côte à côte par espèce
+#  15 premiers termes par Gain, côte à côte par espèce
 # =============================================================================
 
 library(dplyr)
@@ -30,25 +30,37 @@ for (sp_slug in species_list) {
   sp_label <- gsub("_", " ", sp_slug)
 
   # ── Fonction : barplot importance ─────────────────────────────────────────
-  make_importance_plot <- function(importance, title, n_top = 25) {
+  make_importance_plot <- function(importance, title, n_top = 15, x_max = NULL) {
+  top <- importance %>%
+    arrange(desc(Gain)) %>%
+    slice_head(n = n_top) %>%
+    mutate(Feature = forcats::fct_reorder(Feature, Gain))
 
-    top <- importance %>%
-      arrange(desc(Gain)) %>%
-      slice_head(n = n_top) %>%
-      mutate(Feature = forcats::fct_reorder(Feature, Gain))
+  p <- ggplot(top, aes(x = Gain, y = Feature)) +
+    geom_col(fill = "steelblue", alpha = 0.85) +
+    labs(title = title, x = "Gain", y = NULL) +
+    theme_minimal(base_size = 9) +
+    theme(plot.title = element_text(face = "bold", size = 9))
 
-    ggplot(top, aes(x = Gain, y = Feature)) +
-      geom_col(fill = "steelblue", alpha = 0.85) +
-      labs(title = title,
-           x = "Gain", y = NULL) +
-      theme_minimal(base_size = 9) +
-      theme(plot.title = element_text(face = "bold", size = 9))
+  if (!is.null(x_max)) {
+    p <- p + scale_x_continuous(limits = c(0, x_max))
+  }
+  p
   }
 
+  # Dans la boucle, calcule le max commun avant de tracer
+  x_max_common <- max(
+    res$baseline$importance$Gain,
+    res$eof$importance$Gain,
+    na.rm = TRUE
+  )
+
   p_base <- make_importance_plot(res$baseline$importance,
-                                  title = "Baseline")
+                                  title = "Baseline",
+                                  x_max = x_max_common)
   p_eof  <- make_importance_plot(res$eof$importance,
-                                  title = "EOF")
+                                  title = "EOF",
+                                  x_max = x_max_common)
 
   auc_base <- round(res$baseline$auc_mean, 4)
   auc_eof  <- round(res$eof$auc_mean,      4)
