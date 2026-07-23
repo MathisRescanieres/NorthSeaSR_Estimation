@@ -6,7 +6,7 @@
 library(gratia)
 library(ggplot2)
 
-out_root <- "/home/mathis/NorthSeaSR_Estimation/SR_Estimation/rapport/rapport_miproj/figures/results/gratia"
+out_root <- "/home/mathis/NorthSeaSR_Estimation/SR_Estimation/rapport/rapport_miproj/figures/results/gratia/NoCohortTrend"
 
 for (sp in names(gam_models_final)) {
 
@@ -51,14 +51,6 @@ for (sp in names(gam_models_final)) {
     p_bc <- gratia::draw(m, select = bc_idx)
     ggsave(file.path(out_dir, "05_re_cohort.pdf"),
            plot = p_bc, width = 8, height = 5, device = "pdf")
-  }
-
-  # ── 6. Effets aléatoires d'aire (si présents) ─────────────────────────────
-  ur_idx <- grep("Area_fact", term_labels)
-  if (length(ur_idx) > 0) {
-    p_ur <- gratia::draw(m, select = ur_idx)
-    ggsave(file.path(out_dir, "06_re_area.pdf"),
-           plot = p_ur, width = 6, height = 5, device = "pdf")
   }
 
   cat("  Done →", out_dir, "\n\n")

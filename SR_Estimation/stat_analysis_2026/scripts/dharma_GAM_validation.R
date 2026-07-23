@@ -1,5 +1,5 @@
 # =============================================================================
-#  Diagnostics DHARMa — plots individuels par espèce (PDF)
+#  Diagnostics DHARMa - plots individuels par espèce (PDF)
 #  Résidus produits pour TOUS les prédicteurs retenus dans chaque modèle.
 #  Sortie : /figures/results/dharma/<espece>/
 # =============================================================================
@@ -14,7 +14,6 @@ continuous_preds <- list(
   Age_sc               = "Age",
   LngtClassGrouped_sc  = "Taille",
   Cohort_num_sc        = "Cohorte",
-  Depth                = "Profondeur",
   julian_day           = "Jour julien",
   Latitude             = "Latitude",
   Longitude            = "Longitude"
@@ -22,8 +21,7 @@ continuous_preds <- list(
 
 # Prédicteurs facteurs (résidus agrégés par groupe)
 factor_preds <- list(
-  Cohort_fact = "Cohorte (agrégé)",
-  Area_fact   = "Aire (agrégé)"
+  Cohort_fact = "Cohorte (agrégé)"
 )
 
 for (sp in c("Pollachius virens")) {
@@ -50,13 +48,13 @@ for (sp in c("Pollachius virens")) {
              testUniformity = FALSE,
              testOutliers   = FALSE,
              testDispersion = FALSE,
-             main           = paste("QQ-plot —", sp))
+             main           = paste("QQ-plot -", sp))
   dev.off()
 
   # ── 2. Résidus vs valeurs ajustées ─────────────────────────────────────────
   pdf(file.path(out_dir, "02_residuals_fitted.pdf"), width = 8, height = 7)
   plotResiduals(sim_res,
-                main = paste("Résidus vs ajustées —", sp))
+                main = paste("Résidus vs ajustées -", sp))
   dev.off()
 
   # ── 3. Résidus vs prédicteurs continus retenus ─────────────────────────────
@@ -75,7 +73,7 @@ for (sp in c("Pollachius virens")) {
                   absoluteDeviation = TRUE,
                   quantreg          = TRUE,
                   xlab              = label,
-                  main              = paste("Résidus vs", label, "—", sp))
+                  main              = paste("Résidus vs", label, "-", sp))
     dev.off()
   }
 
@@ -91,7 +89,7 @@ for (sp in c("Pollachius virens")) {
     pdf(file.path(out_dir, fname), width = 9, height = 7)
     plotResiduals(sim_res_grp,
                   form = unique(data_model[[var]]),
-                  main = paste("Résidus —", label, "—", sp))
+                  main = paste("Résidus -", label, "-", sp))
     dev.off()
   }
 

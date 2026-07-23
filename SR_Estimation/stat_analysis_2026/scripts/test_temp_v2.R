@@ -48,7 +48,8 @@ SPECIES_NAME <- "Merlangius merlangus"
 # k_time par espèce : ponte étalée sur l'année -> k_time doublé.
 # A remplir au fur et à mesure des espèces traitées avec ce pipeline.
 K_TIME_BY_SPECIES <- list(
-  "Merlangius merlangus" = 24
+  "Merlangius merlangus"  = 24,
+  "Trisopterus esmarkii"  = 24
 )
 k_time_default <- 12
 
@@ -110,7 +111,7 @@ cat("N =", nrow(data_sp), "\n")
 
 k_age   <- min(15, n_distinct(data_sp$Age_sc) - 1)
 k_lngt  <- min(20, n_distinct(data_sp$LngtClassGrouped_sc) - 1)
-k_space <- 150
+k_space <- 120
 k_time  <- if (!is.null(K_TIME_BY_SPECIES[[SPECIES_NAME]])) {
   K_TIME_BY_SPECIES[[SPECIES_NAME]]
 } else {
@@ -119,7 +120,6 @@ k_time  <- if (!is.null(K_TIME_BY_SPECIES[[SPECIES_NAME]])) {
 
 # ----------------------------------------------------------------
 # 4. Formule GAM - construite une seule fois, réutilisée partout
-#    (fix : v1 dupliquait ce bloc entre bam_ref et extract_gam_structure)
 # ----------------------------------------------------------------
 
 build_formula_sp <- function(k_age, k_lngt, k_space, k_time) {
@@ -449,10 +449,12 @@ for (k in seq_along(data_full_w$penalty_list)) {
 # init depuis le modele nul (source fiable : opt_null$par, present dans le cache)
 beta_null <- opt_null$par[names(opt_null$par) == "beta_fixed"]
 
+set.seed(42)
 parameters_full_w <- list(
   beta_fixed             = beta_null,                  # part de l'optimum GAM du nul
   intercept_cohort       = 0,
-  a_month                = rep(0, N_MONTHS - 1),
+  # a_month                = rep(0, N_MONTHS - 1),
+  a_month                = rnorm(N_MONTHS-1,0,0.2),
   log_sigma_rw           = -1,
   slope_cohort           = 0.3,                          # test : reproduit exactement le nul
   b_cohort_resid         = rep_null$b_cohort,
@@ -533,7 +535,7 @@ f_full_w <- make_f_full_w(data_full_w)
 # 13. Optimisation avec redemarrages multiples
 # ----------------------------------------------------------------
 
-fit_with_restarts <- function(obj, n_starts = 3, jitter_sd = 0.5, seed = 1) {
+fit_with_restarts <- function(obj, n_starts = 3, jitter_sd = 0.5, seed = 42) {
   set.seed(seed)
   par0 <- obj$par
   starts <- c(list(par0), lapply(seq_len(n_starts - 1), function(i) {
@@ -674,7 +676,7 @@ cat("\n--- Comparaison modele nul vs modele complet ---\n")
 cat("AIC nul (cohorte IID)        :", round(AIC_null, 2), " (k =", k_null, ")\n")
 cat("AIC complet (fenetre + resid):", round(AIC_full, 2), " (k =", k_full, ")\n")
 cat("Delta AIC (nul - complet)    :", round(delta_AIC, 2),
-    "(> 2 : evidence faible-moderee pour la fenetre thermique ; a calibrer par permutation, cf. section 16)\n")
+    "(> 2 : evidence faible-moderee pour la fenetre thermique)\n")
 cat("sigma_cohort (modele nul)        :", sigma_cohort_null_est, "\n")
 cat("sigma_cohort_resid (modele complet) :", sigma_cohort_resid_full_est, "\n")
 cat("Pseudo-R2 cohorte (reduction de variance sur l'echelle du lien) :",
@@ -706,48 +708,4 @@ if (abs(cor_thermal_year) > 0.6) {
     "(l'anomalie GAM peut ne pas avoir totalement retire la tendance basse frequence). ",
     "Interpreter w_month avec prudence ; envisager un detrending plus flexible de temp_anomaly_gam."
   ))
-}
-
-# ----------------------------------------------------------------
-# 16. Test de permutation (calibration sous H0) - DESACTIVE PAR DEFAUT
-#     Cout : n_perm refits complets. A activer une fois le modele
-#     stabilise (sections 11-15 satisfaisantes), pour obtenir une
-#     p-valeur empirique sur delta_AIC / pseudo_R2_cohort plutot que
-#     de les interpreter en absolu avec ~30 cohortes.
-# ----------------------------------------------------------------
-
-run_permutation_test <- FALSE
-n_perm <- 199
-
-if (run_permutation_test) {
-  cat("\n--- Test de permutation (H0 : pas de fenetre thermique reelle) ---\n")
-  set.seed(42)
-  delta_aic_perm <- numeric(n_perm)
-
-  for (p in seq_len(n_perm)) {
-    perm_idx <- sample(n_cohort)
-    data_perm <- data_full_w
-    data_perm$temp_extended <- temp_extended[perm_idx, , drop = FALSE]
-
-    obj_perm <- RTMB::MakeADFun(
-      make_f_full_w(data_perm), parameters_full_w,
-      random = c("b_cohort_resid", "a_month"), silent = TRUE
-    )
-    o1 <- tryCatch(
-      nlminb(obj_perm$par, obj_perm$fn, obj_perm$gr,
-             control = list(iter.max = 2000, eval.max = 4000)),
-      error = function(e) NULL
-    )
-    if (is.null(o1)) { delta_aic_perm[p] <- NA; next }
-
-    aic_perm <- 2 * o1$objective + 2 * length(obj_perm$par)
-    delta_aic_perm[p] <- AIC_null - aic_perm
-
-    if (p %% 20 == 0) cat("Permutation", p, "/", n_perm, "\n")
-  }
-
-  p_value_perm <- mean(delta_aic_perm >= delta_AIC, na.rm = TRUE)
-  cat("\nDelta AIC observe :", round(delta_AIC, 2), "\n")
-  cat("p-valeur de permutation (Delta AIC) :", round(p_value_perm, 4),
-      "(", sum(!is.na(delta_aic_perm)), "/", n_perm, "permutations valides )\n")
 }
