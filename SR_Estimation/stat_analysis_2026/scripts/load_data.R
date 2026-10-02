@@ -33,33 +33,6 @@ raw_data[factor_cols] <- lapply(raw_data[factor_cols], factor)
 
 data <- raw_data[!is.na(raw_data$number_female) & !is.na(raw_data$number_male), ]
 
-# # Pretraitement of the data set
-# data <- raw_data %>%
-#   select(-PlusGr, -Survey, -IndWgt, -DateofCalculation) %>%
-#   mutate(
-#     Sex = as.factor(Sex),
-#     Maturity = as.factor(Maturity),
-#     Species = as.factor(Species),
-#     Area = as.factor(Area)
-#   ) %>%
-#   filter(
-#     !is.na(Age),
-#     !is.na(Sex),
-#     !is.na(CANoAtLngt)
-#   ) %>%
-#   mutate(
-#     Numeric_sex = ifelse(Sex == "M", 1L, 0L),
-#     Age = as.double(Age),
-#     Year = as.double(Year),
-#     Cohorte = Year - Age,
-#     Species = droplevels(Species),
-#     Maturity = droplevels(Maturity),
-#     Sex = droplevels(Sex)) %>%
-#   mutate(Sex = na_if(as.character(Sex), "U"),
-#          Sex = as.factor(Sex),
-#          Sex = droplevels(Sex)) %>%
-#   filter(!is.na(Sex))
-
 cat("\nDimensions before filtering NAs on sex data   :", nrow(raw_data), "x", ncol(raw_data), "\n")
 cat("Dimensions after filtering NAs on sex data    :", nrow(data), "x", ncol(data), "\n")
 cat("Discarded individuals                         :", nrow(raw_data) - nrow(data), "\n")
